@@ -1,0 +1,67 @@
+cabal-version:      3.4
+name:               tree-sitter-javascript
+version:            0.0.0.0
+license:            AGPL-3.0-only
+synopsis:           Tree-sitter grammar/parser for the JavaScript language
+description:
+  See <https://github.com/wenkokke/gilear/blob/main/packages/tree-sitter-javascript/#README>
+
+author:             Wen Kokke
+maintainer:         wenkokke@users.noreply.github.com
+category:           Language
+build-type:         Simple
+extra-source-files:
+  vendor/tree-sitter-javascript/bindings/c/tree-sitter-javascript.h
+  vendor/tree-sitter-javascript/grammar.js
+  vendor/tree-sitter-javascript/package.json
+  vendor/tree-sitter-javascript/src/parser.c
+  vendor/tree-sitter-javascript/src/scanner.c
+  vendor/tree-sitter-javascript/src/tree_sitter/alloc.h
+  vendor/tree-sitter-javascript/src/tree_sitter/array.h
+  vendor/tree-sitter-javascript/src/tree_sitter/parser.h
+  vendor/tree-sitter-javascript/tree-sitter.json
+
+data-files:
+  vendor/tree-sitter-javascript/src/node-types.json
+  vendor/tree-sitter-javascript/test/corpus/*.txt
+
+tested-with:
+  GHC ==8.10.7
+   || ==9.0.2
+   || ==9.2.8
+   || ==9.4.8
+   || ==9.6.7
+   || ==9.8.4
+   || ==9.10.2
+   || ==9.12.2
+
+common language
+  ghc-options:
+    -Wall -Wcompat -Widentities -Wprepositive-qualified-module
+    -Wredundant-constraints -Wunticked-promoted-constructors
+    -Wunused-packages
+
+  default-language:   Haskell2010
+  default-extensions: ImportQualifiedPost
+
+  if impl(ghc <9.6.1)
+    ghc-options:
+      -optc=-Wno-discarded-qualifiers
+      -optc=-Wno-incompatible-pointer-types-discards-qualifiers
+
+library
+  import:             language
+  exposed-modules:    TreeSitter.JavaScript
+  autogen-modules:    Paths_tree_sitter_javascript
+  other-modules:      Paths_tree_sitter_javascript
+  build-depends:
+    , base                  >=4.13 && <5
+    , base-compat-constptr  >=0.1  && <0.2
+
+  build-tool-depends: hsc2hs:hsc2hs
+  hs-source-dirs:     bindings/haskell
+  include-dirs:       vendor/tree-sitter-javascript/bindings/c
+  includes:           tree-sitter-javascript.h
+  c-sources:
+    vendor/tree-sitter-javascript/src/parser.c
+    vendor/tree-sitter-javascript/src/scanner.c

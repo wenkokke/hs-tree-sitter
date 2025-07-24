@@ -1,0 +1,587 @@
+{
+  "$schema": "https://tree-sitter.github.io/tree-sitter/assets/schemas/grammar.schema.json",
+  "name": "while",
+  "rules": {
+    "source_file": {
+      "type": "SYMBOL",
+      "name": "statements"
+    },
+    "statements": {
+      "type": "REPEAT1",
+      "content": {
+        "type": "SYMBOL",
+        "name": "statement"
+      }
+    },
+    "statement": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "statement_assignment"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "statement_skip"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "statement_sequence"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "statement_if_then_else"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "statement_while_do"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "statement_block"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "expression"
+        }
+      ]
+    },
+    "statement_assignment": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "expression_variable"
+        },
+        {
+          "type": "STRING",
+          "value": ":="
+        },
+        {
+          "type": "SYMBOL",
+          "name": "expression"
+        }
+      ]
+    },
+    "statement_skip": {
+      "type": "STRING",
+      "value": "skip"
+    },
+    "statement_sequence": {
+      "type": "PREC_RIGHT",
+      "value": "sequence",
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "SYMBOL",
+            "name": "statement"
+          },
+          {
+            "type": "STRING",
+            "value": ";"
+          },
+          {
+            "type": "SYMBOL",
+            "name": "statement"
+          }
+        ]
+      }
+    },
+    "statement_if_then_else": {
+      "type": "PREC_RIGHT",
+      "value": "sequence",
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "STRING",
+            "value": "if"
+          },
+          {
+            "type": "SYMBOL",
+            "name": "predicate"
+          },
+          {
+            "type": "STRING",
+            "value": "then"
+          },
+          {
+            "type": "SYMBOL",
+            "name": "statement"
+          },
+          {
+            "type": "STRING",
+            "value": "else"
+          },
+          {
+            "type": "SYMBOL",
+            "name": "statement"
+          }
+        ]
+      }
+    },
+    "statement_while_do": {
+      "type": "PREC_RIGHT",
+      "value": "sequence",
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "STRING",
+            "value": "while"
+          },
+          {
+            "type": "SYMBOL",
+            "name": "predicate"
+          },
+          {
+            "type": "STRING",
+            "value": "do"
+          },
+          {
+            "type": "SYMBOL",
+            "name": "statement"
+          }
+        ]
+      }
+    },
+    "statement_block": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "{"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "statements"
+        },
+        {
+          "type": "STRING",
+          "value": "}"
+        }
+      ]
+    },
+    "predicate": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "predicate_true"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "predicate_false"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "predicate_negation"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "predicate_conjunction"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "predicate_disjunction"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "predicate_comparison"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "parenthesized_predicate"
+        }
+      ]
+    },
+    "predicate_true": {
+      "type": "STRING",
+      "value": "true"
+    },
+    "predicate_false": {
+      "type": "STRING",
+      "value": "false"
+    },
+    "predicate_negation": {
+      "type": "PREC",
+      "value": "negation",
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "STRING",
+            "value": "not"
+          },
+          {
+            "type": "SYMBOL",
+            "name": "predicate"
+          }
+        ]
+      }
+    },
+    "predicate_conjunction": {
+      "type": "PREC_LEFT",
+      "value": "conjunction",
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "FIELD",
+            "name": "left",
+            "content": {
+              "type": "SYMBOL",
+              "name": "predicate"
+            }
+          },
+          {
+            "type": "STRING",
+            "value": "and"
+          },
+          {
+            "type": "FIELD",
+            "name": "right",
+            "content": {
+              "type": "SYMBOL",
+              "name": "predicate"
+            }
+          }
+        ]
+      }
+    },
+    "predicate_disjunction": {
+      "type": "PREC_LEFT",
+      "value": "disjunction",
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "FIELD",
+            "name": "left",
+            "content": {
+              "type": "SYMBOL",
+              "name": "predicate"
+            }
+          },
+          {
+            "type": "STRING",
+            "value": "or"
+          },
+          {
+            "type": "FIELD",
+            "name": "right",
+            "content": {
+              "type": "SYMBOL",
+              "name": "predicate"
+            }
+          }
+        ]
+      }
+    },
+    "predicate_comparison": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "FIELD",
+          "name": "left",
+          "content": {
+            "type": "SYMBOL",
+            "name": "expression"
+          }
+        },
+        {
+          "type": "SYMBOL",
+          "name": "comparison_operator"
+        },
+        {
+          "type": "FIELD",
+          "name": "right",
+          "content": {
+            "type": "SYMBOL",
+            "name": "expression"
+          }
+        }
+      ]
+    },
+    "comparison_operator": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "lt"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "le"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "eq"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "gt"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "ge"
+        }
+      ]
+    },
+    "lt": {
+      "type": "STRING",
+      "value": "<"
+    },
+    "le": {
+      "type": "STRING",
+      "value": "<="
+    },
+    "eq": {
+      "type": "STRING",
+      "value": "="
+    },
+    "gt": {
+      "type": "STRING",
+      "value": ">"
+    },
+    "ge": {
+      "type": "STRING",
+      "value": ">="
+    },
+    "parenthesized_predicate": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "("
+        },
+        {
+          "type": "SYMBOL",
+          "name": "predicate"
+        },
+        {
+          "type": "STRING",
+          "value": ")"
+        }
+      ]
+    },
+    "expression": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "expression_variable"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "expression_number"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "expression_addition"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "expression_subtraction"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "expression_multiplication"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "expression_division"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "parenthesized_expression"
+        }
+      ]
+    },
+    "expression_variable": {
+      "type": "PATTERN",
+      "value": "[a-z]+"
+    },
+    "expression_number": {
+      "type": "PATTERN",
+      "value": "[0-9]+"
+    },
+    "expression_addition": {
+      "type": "PREC_LEFT",
+      "value": "addition",
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "FIELD",
+            "name": "left",
+            "content": {
+              "type": "SYMBOL",
+              "name": "expression"
+            }
+          },
+          {
+            "type": "STRING",
+            "value": "+"
+          },
+          {
+            "type": "FIELD",
+            "name": "right",
+            "content": {
+              "type": "SYMBOL",
+              "name": "expression"
+            }
+          }
+        ]
+      }
+    },
+    "expression_subtraction": {
+      "type": "PREC_LEFT",
+      "value": "addition",
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "FIELD",
+            "name": "left",
+            "content": {
+              "type": "SYMBOL",
+              "name": "expression"
+            }
+          },
+          {
+            "type": "STRING",
+            "value": "-"
+          },
+          {
+            "type": "FIELD",
+            "name": "right",
+            "content": {
+              "type": "SYMBOL",
+              "name": "expression"
+            }
+          }
+        ]
+      }
+    },
+    "expression_multiplication": {
+      "type": "PREC_LEFT",
+      "value": "multiplication",
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "FIELD",
+            "name": "left",
+            "content": {
+              "type": "SYMBOL",
+              "name": "expression"
+            }
+          },
+          {
+            "type": "STRING",
+            "value": "*"
+          },
+          {
+            "type": "FIELD",
+            "name": "right",
+            "content": {
+              "type": "SYMBOL",
+              "name": "expression"
+            }
+          }
+        ]
+      }
+    },
+    "expression_division": {
+      "type": "PREC_LEFT",
+      "value": "multiplication",
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "FIELD",
+            "name": "left",
+            "content": {
+              "type": "SYMBOL",
+              "name": "expression"
+            }
+          },
+          {
+            "type": "STRING",
+            "value": "/"
+          },
+          {
+            "type": "FIELD",
+            "name": "right",
+            "content": {
+              "type": "SYMBOL",
+              "name": "expression"
+            }
+          }
+        ]
+      }
+    },
+    "parenthesized_expression": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "("
+        },
+        {
+          "type": "SYMBOL",
+          "name": "expression"
+        },
+        {
+          "type": "STRING",
+          "value": ")"
+        }
+      ]
+    }
+  },
+  "extras": [
+    {
+      "type": "PATTERN",
+      "value": "\\s"
+    }
+  ],
+  "conflicts": [],
+  "precedences": [
+    [
+      {
+        "type": "STRING",
+        "value": "multiplication"
+      },
+      {
+        "type": "STRING",
+        "value": "addition"
+      },
+      {
+        "type": "STRING",
+        "value": "negation"
+      },
+      {
+        "type": "STRING",
+        "value": "conjunction"
+      },
+      {
+        "type": "STRING",
+        "value": "disjunction"
+      },
+      {
+        "type": "STRING",
+        "value": "sequence"
+      }
+    ]
+  ],
+  "externals": [],
+  "inline": [],
+  "supertypes": [
+    "statement",
+    "predicate",
+    "expression",
+    "comparison_operator"
+  ]
+}

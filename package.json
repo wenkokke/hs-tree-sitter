@@ -1,0 +1,11 @@
+{
+  "name": "gilear",
+  "workspaces": [
+    "tree-sitter-javascript/vendor/tree-sitter-javascript",
+    "tree-sitter-while"
+  ],
+  "devDependencies": {
+    "prettier": "^3.4.1",
+    "tree-sitter-cli": "^0.24.3"
+  }
+}

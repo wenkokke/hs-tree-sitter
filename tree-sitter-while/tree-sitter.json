@@ -1,0 +1,35 @@
+{
+  "grammars": [
+    {
+      "name": "while",
+      "camelcase": "WHILE",
+      "scope": "source.while",
+      "path": ".",
+      "file-types": null,
+      "injection-regex": "^while$"
+    }
+  ],
+  "metadata": {
+    "version": "1.0.0",
+    "license": "AGPL-3.0-only",
+    "description": "Tree-sitter grammar/parser for the WHILE language",
+    "authors": [
+      {
+        "name": "Wen Kokke",
+        "email": "wenkokke@users.noreply.github.com"
+      }
+    ],
+    "links": {
+      "repository": "https://github.com/tree-sitter/tree-sitter-while"
+    }
+  },
+  "bindings": {
+    "c": true,
+    "go": false,
+    "node": false,
+    "python": false,
+    "rust": false,
+    "swift": false,
+    "haskell": true
+  }
+}

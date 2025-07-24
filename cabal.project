@@ -1,0 +1,14 @@
+index-state:
+  , hackage.haskell.org 2025-07-24T11:10:31Z
+
+packages:
+  base-compat-constptr
+  hs-tree-sitter
+  hs-tree-sitter-capi
+  tree-sitter-javascript
+  tree-sitter-while
+
+if impl(ghc >=9.6.5)
+  packages:
+    hs-tree-sitter-generate-ast
+    hs-tree-sitter-test

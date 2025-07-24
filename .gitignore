@@ -1,0 +1,41 @@
+# Haskell
+/dist/
+/dist-newstyle/
+*.o
+*.hi
+*.hie
+*.chi
+*.chs.h
+*.dyn_o
+*.dyn_hi
+*.prof
+*.aux
+*.hp
+*.eventlog
+.hpc
+.hsenv
+cabal.project.local
+cabal.project.local~
+cabal.project.sdist
+
+# Haddock
+/doc/reference
+
+# JavaScript
+build/
+prebuilds/
+node_modules/
+
+# Devenv
+.devenv*
+devenv.local.nix
+
+# direnv
+.direnv
+
+# packages/vscode-gilear
+/packages/vscode-gilear/out/
+/packages/vscode-gilear/tsconfig.tsbuildinfo
+
+# vscode-test
+.vscode-test/

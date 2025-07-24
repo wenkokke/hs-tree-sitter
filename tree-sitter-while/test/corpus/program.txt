@@ -1,0 +1,35 @@
+================================================================================
+While Loop
+================================================================================
+
+x := 0;
+y := 0;
+while x < 5 do
+{
+  y := y + 1
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (statements
+    (statement_sequence
+      (statement_assignment
+        (expression_variable)
+        (expression_number))
+      (statement_sequence
+        (statement_assignment
+          (expression_variable)
+          (expression_number))
+        (statement_while_do
+          (predicate_comparison
+            left: (expression_variable)
+            (lt)
+            right: (expression_number))
+          (statement_block
+            (statements
+              (statement_assignment
+                (expression_variable)
+                (expression_addition
+                  left: (expression_variable)
+                  right: (expression_number))))))))))

@@ -1,0 +1,320 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+  merge_group:
+
+defaults:
+  run:
+    shell: "sh"
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  #############################################################################
+  # Build
+  #############################################################################
+
+  build:
+    name: |
+      ${{ format(
+            'Build on {0}{1}{2}',
+            startsWith(matrix.os, 'ubuntu-') && 'Linux' || startsWith(matrix.os, 'macOS-') && 'macOS' || startsWith(matrix.os, 'windows-') && 'Windows',
+            matrix.ghc-version && format(' with GHC {0}', matrix.ghc-version),
+            matrix.cabal-version && format(' and Cabal {0}', matrix.cabal-version)
+          )
+       }}
+    runs-on: "${{ matrix.os }}"
+    strategy:
+      matrix:
+        os: ["ubuntu-latest", "macOS-latest", "windows-latest"]
+        ghc-version: ["9.12", "9.10", "9.8"]
+        cabal-version: [""] # use version from dev-dependencies
+        node-version: [""] # use version from dev-dependencies
+        include:
+          # Test older versions exclusively on Linux
+          - { os: "ubuntu-latest", ghc-version: "9.6" }
+          - { os: "ubuntu-latest", ghc-version: "9.4" }
+          - { os: "ubuntu-latest", ghc-version: "9.2" }
+          - { os: "ubuntu-latest", ghc-version: "9.0" }
+          - { os: "ubuntu-latest", ghc-version: "8.10" }
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      # The dev-dependencies file lists the versions of all system dependencies
+      # required for development. It is formatted in such a way that it is easy
+      # to use from GitHub Actions. This step outputs the versions to make them
+      # available to all following steps under "steps.dev-dependencies.outputs"
+      - name: 🗄️ Read dev-dependencies
+        run: cat "./scripts/dev-dependencies.txt" >> "$GITHUB_OUTPUT"
+        id: dev-dependencies
+
+      - name: 🛠️ Install Graphviz
+        uses: ts-graphviz/setup-graphviz@v2
+
+      - name: 🛠️ Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version || steps.dev-dependencies.outputs.node }}
+        id: setup-node
+
+      - name: 💾 Restore NPM dependencies
+        uses: actions/cache/restore@v4
+        if: ${{ !env.ACT }}
+        id: cache-node
+        env:
+          key: ${{ runner.os }}-ghc-${{ steps.setup-node.outputs.node-version }}
+        with:
+          path: node_modules/
+          key: ${{ env.key }}-package-lock-${{ hashFiles('package-lock.json') }}
+          restore-keys: ${{ env.key }}-
+
+      - name: 🛠️ Install Node dependencies
+        if: ${{ env.ACT || steps.cache-node.outputs.cache-hit != 'true' }}
+        run: npm ci
+
+      - name: 💾 Save Node dependencies
+        uses: actions/cache/save@v4
+        if: ${{ !env.ACT && steps.cache-node.outputs.cache-hit != 'true' }}
+        with:
+          path: node_modules/
+          key: ${{ steps.cache-node.outputs.cache-primary-key }}
+
+      - name: 🛠️ Install Haskell
+        uses: haskell-actions/setup@v2
+        id: setup-haskell
+        with:
+          ghc-version: ${{ matrix.ghc-version || steps.dev-dependencies.outputs.ghc }}
+          cabal-version: ${{ matrix.cabal-version || steps.dev-dependencies.outputs.cabal }}
+
+      - name: 🛠️ Configure
+        run: |
+          cabal configure
+          cabal build all --dry-run
+
+      - name: 💾 Restore Cabal dependencies
+        uses: actions/cache/restore@v4
+        if: ${{ !env.ACT }}
+        id: cache-haskell
+        env:
+          key: ${{ runner.os }}-ghc-${{ steps.setup-haskell.outputs.ghc-version }}-cabal-${{ steps.setup-haskell.outputs.cabal-version }}
+        with:
+          path: ${{ steps.setup-haskell.outputs.cabal-store }}
+          key: ${{ env.key }}-plan-${{ hashFiles('dist-newstyle/cache/plan.json') }}
+          restore-keys: ${{ env.key }}-
+
+      - name: 🛠️ Install Cabal dependencies
+        if: ${{ env.ACT || steps.cache-haskell.outputs.cache-hit != 'true' }}
+        run: cabal build all --only-dependencies
+
+      - name: 💾 Save Cabal dependencies
+        uses: actions/cache/save@v4
+        if: ${{ !env.ACT && steps.cache-haskell.outputs.cache-hit != 'true' }}
+        with:
+          path: ${{ steps.setup-haskell.outputs.cabal-store }}
+          key: ${{ steps.cache-haskell.outputs.cache-primary-key }}
+
+      - name: 🏗️ Generate tree-sitter grammars
+        run: npm run generate --workspaces --if-present
+
+      - name: 🏗️ Build Haskell Packages
+        run: cabal build all --enable-tests
+
+      - name: 🧪 Test Haskell Packages
+        run: cabal test all
+
+  #############################################################################
+  # Lint with actionlint
+  #############################################################################
+
+  lint-actionlint:
+    name: "Lint with actionlint"
+    runs-on: "ubuntu-latest"
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: 🗄️ Read dev-dependencies
+        run: cat "./scripts/dev-dependencies.txt" >> "$GITHUB_OUTPUT"
+        id: dev-dependencies
+
+      - name: "Setup actionlint"
+        uses: ./.github/actions/setup-actionlint
+        with:
+          actionlint-version: ${{ steps.dev-dependencies.outputs.actionlint }}
+
+      - name: 🎗️ Lint with actionlint
+        run: ./scripts/lint-actionlint.sh
+
+  #############################################################################
+  # Lint with cabal
+  #############################################################################
+
+  lint-cabal:
+    name: "Lint with Cabal"
+    runs-on: "ubuntu-latest"
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: 🗄️ Read dev-dependencies
+        run: cat "./scripts/dev-dependencies.txt" >> "$GITHUB_OUTPUT"
+        id: dev-dependencies
+
+      - name: 🛠️ Install Haskell
+        uses: haskell-actions/setup@v2
+        with:
+          ghc-version: ${{ steps.dev-dependencies.outputs.ghc }}
+          cabal-version: ${{ steps.dev-dependencies.outputs.cabal }}
+        id: setup-haskell
+
+      - name: 🎗️ Lint with Cabal
+        run: ./scripts/lint-cabal.sh
+
+  #############################################################################
+  # Lint with cabal-fmt
+  #############################################################################
+
+  lint-cabal-fmt:
+    name: "Lint with cabal-fmt"
+    runs-on: "ubuntu-latest"
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: 🗄️ Read dev-dependencies
+        run: cat "./scripts/dev-dependencies.txt" >> "$GITHUB_OUTPUT"
+        id: dev-dependencies
+
+      - name: 🛠️ Install cabal-fmt
+        uses: ./.github/actions/setup-cabal-fmt
+        with:
+          cabal-fmt-version: ${{ steps.dev-dependencies.outputs.cabal-fmt }}
+          ghc-version: ${{ steps.dev-dependencies.outputs.ghc }}
+          cabal-version: ${{ steps.dev-dependencies.outputs.cabal }}
+
+      - name: 🎗️ Lint with cabal-fmt
+        run: ./scripts/lint-cabal-fmt.sh
+
+  #############################################################################
+  # Lint with HLint
+  #############################################################################
+
+  lint-hlint:
+    name: "Lint with HLint"
+    runs-on: "ubuntu-latest"
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: 🗄️ Read dev-dependencies
+        run: cat "./scripts/dev-dependencies.txt" >> "$GITHUB_OUTPUT"
+        id: dev-dependencies
+
+      - name: 🛠️ Install HLint
+        uses: haskell-actions/hlint-setup@v2
+        with:
+          version: ${{ steps.dev-dependencies.outputs.hlint }}
+        id: setup-hlint
+
+      - name: 🎗️ Lint with HLint
+        run: ./scripts/lint-hlint.sh
+        env:
+          HLINT: ${{ steps.setup-hlint.outputs.hlint-bin }}
+
+  #############################################################################
+  # Lint with Fourmolu
+  #############################################################################
+
+  lint-fourmolu:
+    name: "Lint with Fourmolu"
+    runs-on: "ubuntu-latest"
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: 🗄️ Read dev-dependencies
+        run: cat "./scripts/dev-dependencies.txt" >> "$GITHUB_OUTPUT"
+        id: dev-dependencies
+
+      - name: 🛠️ Install Fourmolu
+        uses: ./.github/actions/setup-fourmolu
+        with:
+          fourmolu-version: ${{ steps.dev-dependencies.outputs.fourmolu }}
+          ghc-version: ${{ steps.dev-dependencies.outputs.ghc }}
+          cabal-version: ${{ steps.dev-dependencies.outputs.cabal }}
+
+      - name: 🎗️ Lint with Fourmolu
+        run: ./scripts/lint-fourmolu.sh
+
+  #############################################################################
+  # Lint with Prettier
+  #############################################################################
+
+  lint-prettier:
+    name: "Lint with Prettier"
+    runs-on: "ubuntu-latest"
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: 🗄️ Read dev-dependencies
+        run: cat "./scripts/dev-dependencies.txt" >> "$GITHUB_OUTPUT"
+        id: dev-dependencies
+
+      - name: 🎗️ Lint with Prettier
+        run: ./scripts/lint-prettier.sh
+        env:
+          PRETTIER: "npm exec --yes --package=prettier@${{ steps.dev-dependencies.outputs.prettier }} prettier --"
+
+  #############################################################################
+  # Lint with ShellCheck
+  #############################################################################
+
+  lint-shellcheck:
+    name: "Lint with ShellCheck"
+    runs-on: "ubuntu-latest"
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: 🗄️ Read dev-dependencies
+        run: cat "./scripts/dev-dependencies.txt" >> "$GITHUB_OUTPUT"
+        id: dev-dependencies
+
+      - name: 🛠️ Install ShellCheck
+        uses: ./.github/actions/setup-shellcheck
+        with:
+          shellcheck-version: ${{ steps.dev-dependencies.outputs.shellcheck }}
+
+      - name: 🎗️ Lint with ShellCheck
+        run: ./scripts/lint-shellcheck.sh
