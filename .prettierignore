@@ -1,0 +1,12 @@
+# packages/tree-sitter
+hs-tree-sitter-test/test/data/
+
+# packages/tree-sitter-capi
+hs-tree-sitter-capi/vendor/
+
+# tree-sitter-while
+tree-sitter-while/src/grammar.json
+tree-sitter-while/src/node-types.json
+
+# packages/tree-sitter-javascript
+tree-sitter-javascript/vendor/tree-sitter-javascript/

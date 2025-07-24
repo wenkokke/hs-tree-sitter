@@ -1,0 +1,593 @@
+[
+  {
+    "type": "comparison_operator",
+    "named": true,
+    "subtypes": [
+      {
+        "type": "eq",
+        "named": true
+      },
+      {
+        "type": "ge",
+        "named": true
+      },
+      {
+        "type": "gt",
+        "named": true
+      },
+      {
+        "type": "le",
+        "named": true
+      },
+      {
+        "type": "lt",
+        "named": true
+      }
+    ]
+  },
+  {
+    "type": "expression",
+    "named": true,
+    "subtypes": [
+      {
+        "type": "expression_addition",
+        "named": true
+      },
+      {
+        "type": "expression_division",
+        "named": true
+      },
+      {
+        "type": "expression_multiplication",
+        "named": true
+      },
+      {
+        "type": "expression_number",
+        "named": true
+      },
+      {
+        "type": "expression_subtraction",
+        "named": true
+      },
+      {
+        "type": "expression_variable",
+        "named": true
+      },
+      {
+        "type": "parenthesized_expression",
+        "named": true
+      }
+    ]
+  },
+  {
+    "type": "predicate",
+    "named": true,
+    "subtypes": [
+      {
+        "type": "parenthesized_predicate",
+        "named": true
+      },
+      {
+        "type": "predicate_comparison",
+        "named": true
+      },
+      {
+        "type": "predicate_conjunction",
+        "named": true
+      },
+      {
+        "type": "predicate_disjunction",
+        "named": true
+      },
+      {
+        "type": "predicate_false",
+        "named": true
+      },
+      {
+        "type": "predicate_negation",
+        "named": true
+      },
+      {
+        "type": "predicate_true",
+        "named": true
+      }
+    ]
+  },
+  {
+    "type": "statement",
+    "named": true,
+    "subtypes": [
+      {
+        "type": "expression",
+        "named": true
+      },
+      {
+        "type": "statement_assignment",
+        "named": true
+      },
+      {
+        "type": "statement_block",
+        "named": true
+      },
+      {
+        "type": "statement_if_then_else",
+        "named": true
+      },
+      {
+        "type": "statement_sequence",
+        "named": true
+      },
+      {
+        "type": "statement_skip",
+        "named": true
+      },
+      {
+        "type": "statement_while_do",
+        "named": true
+      }
+    ]
+  },
+  {
+    "type": "expression_addition",
+    "named": true,
+    "fields": {
+      "left": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "expression",
+            "named": true
+          }
+        ]
+      },
+      "right": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "expression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "expression_division",
+    "named": true,
+    "fields": {
+      "left": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "expression",
+            "named": true
+          }
+        ]
+      },
+      "right": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "expression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "expression_multiplication",
+    "named": true,
+    "fields": {
+      "left": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "expression",
+            "named": true
+          }
+        ]
+      },
+      "right": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "expression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "expression_subtraction",
+    "named": true,
+    "fields": {
+      "left": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "expression",
+            "named": true
+          }
+        ]
+      },
+      "right": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "expression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "parenthesized_expression",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "expression",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "parenthesized_predicate",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "predicate",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "predicate_comparison",
+    "named": true,
+    "fields": {
+      "left": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "expression",
+            "named": true
+          }
+        ]
+      },
+      "right": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "expression",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "comparison_operator",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "predicate_conjunction",
+    "named": true,
+    "fields": {
+      "left": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "predicate",
+            "named": true
+          }
+        ]
+      },
+      "right": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "predicate",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "predicate_disjunction",
+    "named": true,
+    "fields": {
+      "left": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "predicate",
+            "named": true
+          }
+        ]
+      },
+      "right": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "predicate",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "predicate_negation",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "predicate",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "source_file",
+    "named": true,
+    "root": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "statements",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "statement_assignment",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "expression",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "statement_block",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "statements",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "statement_if_then_else",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "predicate",
+          "named": true
+        },
+        {
+          "type": "statement",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "statement_sequence",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "statement",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "statement_while_do",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "predicate",
+          "named": true
+        },
+        {
+          "type": "statement",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "statements",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "statement",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "(",
+    "named": false
+  },
+  {
+    "type": ")",
+    "named": false
+  },
+  {
+    "type": "*",
+    "named": false
+  },
+  {
+    "type": "+",
+    "named": false
+  },
+  {
+    "type": "-",
+    "named": false
+  },
+  {
+    "type": "/",
+    "named": false
+  },
+  {
+    "type": ":=",
+    "named": false
+  },
+  {
+    "type": ";",
+    "named": false
+  },
+  {
+    "type": "and",
+    "named": false
+  },
+  {
+    "type": "do",
+    "named": false
+  },
+  {
+    "type": "else",
+    "named": false
+  },
+  {
+    "type": "eq",
+    "named": true
+  },
+  {
+    "type": "expression_number",
+    "named": true
+  },
+  {
+    "type": "expression_variable",
+    "named": true
+  },
+  {
+    "type": "ge",
+    "named": true
+  },
+  {
+    "type": "gt",
+    "named": true
+  },
+  {
+    "type": "if",
+    "named": false
+  },
+  {
+    "type": "le",
+    "named": true
+  },
+  {
+    "type": "lt",
+    "named": true
+  },
+  {
+    "type": "not",
+    "named": false
+  },
+  {
+    "type": "or",
+    "named": false
+  },
+  {
+    "type": "predicate_false",
+    "named": true
+  },
+  {
+    "type": "predicate_true",
+    "named": true
+  },
+  {
+    "type": "statement_skip",
+    "named": true
+  },
+  {
+    "type": "then",
+    "named": false
+  },
+  {
+    "type": "while",
+    "named": false
+  },
+  {
+    "type": "{",
+    "named": false
+  },
+  {
+    "type": "}",
+    "named": false
+  }
+]
