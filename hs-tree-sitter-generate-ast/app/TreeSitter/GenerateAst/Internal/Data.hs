@@ -9,6 +9,7 @@
 
 module TreeSitter.GenerateAst.Internal.Data (
   Name (..),
+  unName,
   Type (..),
   Constr (..),
   Data (..),
@@ -32,8 +33,15 @@ import Data.Vector (Vector)
 import Data.Vector qualified as V
 import TreeSitter.GenerateAst.Internal.Grammar (Grammar (..), Rule (..), RuleName)
 
-newtype Name = Name {unName :: Text}
+newtype Name = Name {getName :: Text}
   deriving newtype (Eq, Ord, Show, IsString)
+
+-- | If we have rules named: "rule" and "_rule" it will produce a
+-- conflict
+unName :: Name -> Text
+unName (Name n) = case Text.head n of
+  '_'        -> "hidden" <> n
+  _otherwise -> n
 
 data Type
   = Node Name
