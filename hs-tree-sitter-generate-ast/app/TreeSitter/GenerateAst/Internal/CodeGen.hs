@@ -28,7 +28,7 @@ import Data.Text.Lazy.Builder qualified as TLB
 import Text.DocLayout (Doc, render)
 import Text.DocLayout qualified as Doc (Doc (..))
 import Text.DocTemplates (Context (..), ToContext (..), Val (..), applyTemplate)
-import TreeSitter.GenerateAst.Internal.Data (Constr (..), Data (..), Field (..), Name (..), Type (..), fieldName, toDataTypes)
+import TreeSitter.GenerateAst.Internal.Data (Constr (..), Data (..), Field (..), Name (..), Type (..), fieldName, toDataTypes, unName)
 import TreeSitter.GenerateAst.Internal.Grammar (Grammar (..), RuleName)
 
 {- Note [One AstCache per syntax tree]
