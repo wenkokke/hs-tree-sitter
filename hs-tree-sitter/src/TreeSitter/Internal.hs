@@ -31,11 +31,16 @@ module TreeSitter.Internal (
   Query,
   QueryCursor,
   LookaheadIterator,
+  DecodeFunction,
+  DecodeFunctionResult (..),
   InputEncoding (InputEncodingUTF8, InputEncodingUTF16LE, InputEncodingUTF16BE, InputEncodingCustom),
   SymbolType (SymbolTypeRegular, SymbolTypeAnonymous, SymbolTypeSupertype, SymbolTypeAuxiliary),
   Point (Point, pointColumn, pointRow),
   Range (Range, rangeStartPoint, rangeEndPoint, rangeStartByte, rangeEndByte),
-  Input,
+  InputRead,
+  Input (..),
+  ParseOptionsProgressCallback,
+  ParseOptions (..),
   LogType (LogTypeLex, LogTypeParse),
   InputEdit (InputEdit, inputEditStartByte, inputEditOldEndByte, inputEditNewEndByte, inputEditStartPoint, inputEditOldEndPoint, inputEditNewEndPoint),
   Node,
@@ -50,6 +55,9 @@ module TreeSitter.Internal (
   QueryPredicateStep,
   QueryErrorType (QueryErrorTypeSyntax, QueryErrorTypeNodeType, QueryErrorTypeField, QueryErrorTypeCapture, QueryErrorTypeStructure, QueryErrorTypeLanguage),
   QueryError (..),
+  QueryCursorOptionsProgressCallback,
+  QueryCursorOptions (..),
+  LanguageMetadata (..),
 
   -- * Parser
   parserNew,
@@ -64,6 +72,7 @@ module TreeSitter.Internal (
   parserHasLogger,
   parserRemoveLogger,
   parserParse,
+  parserParseWithOptions,
   parserParseString,
   parserParseByteString,
   parserParseByteStringWithEncoding,
@@ -130,6 +139,8 @@ module TreeSitter.Internal (
   nodeNamedDescendantForPointRange,
   nodeEdit,
   nodeEq,
+  pointEdit,
+  rangeEdit,
 
   -- * TreeCursor
   treeCursorNew,
@@ -171,11 +182,14 @@ module TreeSitter.Internal (
   queryCursorNew,
   unsafeQueryCursorDelete,
   queryCursorExec,
+  queryCursorExecWithOptions,
   queryCursorDidExceedMatchLimit,
   queryCursorMatchLimit,
   queryCursorSetMatchLimit,
   queryCursorSetByteRange,
   queryCursorSetPointRange,
+  queryCursorSetContainingByteRange,
+  queryCursorSetContainingPointRange,
   queryCursorNextMatch,
   queryCursorRemoveMatch,
   queryCursorNextCapture,
@@ -192,9 +206,13 @@ module TreeSitter.Internal (
   languageFieldCount,
   languageFieldNameForId,
   languageFieldIdForName,
+  languageSupertypes,
+  languageSubtypes,
   languageSymbolType,
   languageAbiVersion,
+  languageMetadata,
   languageNextState,
+  languageName,
 
   -- * Lookahead Iterator
   withLookaheadIteratorAsTSLookaheadIteratorPtr,
@@ -278,27 +296,41 @@ newtype QueryCursor = WrapTSQueryCursor {unWrapTSQueryCursor :: ForeignPtr C.TSQ
 
 newtype LookaheadIterator = WrapTSLookaheadIterator {unWrapTSLookaheadIterator :: ForeignPtr C.TSLookaheadIterator}
 
-newtype InputEncoding = WrapTSInputEncoding {unWrapTSInputEncoding :: C.TSInputEncoding}
+data DecodeFunctionResult = DecodeFunctionResult
+  { decodeFunctionResultCodePoint :: !Int32
+  , decodeFunctionResultBytesConsumed :: !Word32
+  }
 
-pattern InputEncodingUTF8 :: InputEncoding
-pattern InputEncodingUTF8 = WrapTSInputEncoding C.TSInputEncodingUTF8
+type DecodeFunction = ByteString -> IO DecodeFunctionResult
 
-pattern InputEncodingUTF16LE :: InputEncoding
-pattern InputEncodingUTF16LE = WrapTSInputEncoding C.TSInputEncodingUTF16LE
+data InputEncoding
+  = InputEncodingUTF8
+  | InputEncodingUTF16LE
+  | InputEncodingUTF16BE
+  | InputEncodingCustom DecodeFunction
 
-pattern InputEncodingUTF16BE :: InputEncoding
-pattern InputEncodingUTF16BE = WrapTSInputEncoding C.TSInputEncodingUTF16BE
+toTSInputEncoding :: InputEncoding -> C.TSInputEncoding
+toTSInputEncoding InputEncodingUTF8 = C.TSInputEncodingUTF8
+toTSInputEncoding InputEncodingUTF16LE = C.TSInputEncodingUTF16LE
+toTSInputEncoding InputEncodingUTF16BE = C.TSInputEncodingUTF16BE
+toTSInputEncoding InputEncodingCustom{} = C.TSInputEncodingCustom
 
-pattern InputEncodingCustom :: InputEncoding
-pattern InputEncodingCustom = WrapTSInputEncoding C.TSInputEncodingCustom
-
-{-# COMPLETE InputEncodingUTF8, InputEncodingUTF16LE, InputEncodingUTF16BE, InputEncodingCustom #-}
+toMaybeTSDecodeFunction :: InputEncoding -> Maybe C.TSDecodeFunction
+toMaybeTSDecodeFunction (InputEncodingCustom decodeFunction) = Just (toTSDecodeFunction decodeFunction)
+ where
+  toTSDecodeFunction :: DecodeFunction -> C.TSDecodeFunction
+  toTSDecodeFunction decode strPtr strLen codePointOut = do
+    byteString <- BSU.unsafePackCStringLen (coerce strPtr, fromIntegral strLen)
+    DecodeFunctionResult{..} <- decode byteString
+    poke codePointOut decodeFunctionResultCodePoint
+    pure decodeFunctionResultBytesConsumed
+toMaybeTSDecodeFunction _ = Nothing
 
 instance Show InputEncoding where
   show InputEncodingUTF8 = "InputEncodingUTF8"
   show InputEncodingUTF16LE = "InputEncodingUTF16LE"
   show InputEncodingUTF16BE = "InputEncodingUTF16BE"
-  show InputEncodingCustom = "InputEncodingCustom"
+  show InputEncodingCustom{} = "InputEncodingCustom"
 
 newtype SymbolType = WrapTSSymbolType {unWrapTSSymbolType :: C.TSSymbolType}
   deriving stock (Eq)
@@ -559,6 +591,13 @@ instance Exception QueryError where
   displayException :: QueryError -> String
   displayException = queryErrorMessage
 
+data LanguageMetadata = LanguageMetadata
+  { majorVersion :: !Word8
+  , minorVersion :: !Word8
+  , patchVersion :: !Word8
+  }
+  deriving (Ord, Eq, Show)
+
 -- * Parser
 
 withParserAsTSParserPtr :: Parser -> (Ptr C.TSParser -> IO a) -> IO a
@@ -651,42 +690,73 @@ parserRemoveLogger parser =
   withParserAsTSParserPtr parser $
     fmap (fmap tsLogToLog) . C.ts_parser_remove_logger . coerce
 
-type Input =
+type InputRead =
   -- | Byte index.
   Word32 ->
   -- | Position.
   Point ->
   IO ByteString
 
+toTSInputReadFunction :: InputRead -> C.TSInputReadFunction
+toTSInputReadFunction inputRead byteIndex positionPtr bytesRead = do
+  position <- WrapTSPoint <$> peek positionPtr
+  chunk <- inputRead byteIndex position
+  BS.useAsCStringLen chunk $ \(str, strLen) -> do
+    -- TODO: This cast is unsafe.
+    poke bytesRead (fromIntegral strLen)
+    pure $ ConstPtr str
+
+data Input = Input
+  { read_ :: !InputRead
+  , encoding :: !InputEncoding
+  }
+
+withInputAsTSInput :: Input -> (C.TSInput -> IO r) -> IO r
+withInputAsTSInput Input{..} action = do
+  chunkRef <- newIORef BS.empty
+  let tsRead byteIndex positionPtr bytesRead = do
+        position <- WrapTSPoint <$> peek positionPtr
+        chunk@(BS strForeignPtr strLen) <- read_ byteIndex position
+        writeIORef chunkRef chunk
+        let strPtr = unsafeForeignPtrToPtr strForeignPtr
+        -- TODO: This cast is unsafe.
+        poke bytesRead (fromIntegral strLen)
+        pure $ ConstPtr (castPtr strPtr)
+  let tsEncoding = toTSInputEncoding encoding
+  let tsDecode = toMaybeTSDecodeFunction encoding
+  C.withTSInput tsRead tsEncoding tsDecode action
+
 -- | See @`C.ts_parser_parse`@.
-parserParse :: Parser -> Maybe Tree -> Input -> InputEncoding -> IO (Maybe Tree)
-parserParse parser oldTree input encoding =
+parserParse :: Parser -> Maybe Tree -> Input -> IO (Maybe Tree)
+parserParse parser oldTree input =
   withParserAsTSParserPtr parser $ \parserPtr ->
-    withMaybeTreeAsTSTreePtr oldTree $ \oldTreePtr -> do
-      -- NOTE: The purpose of `chunkRef` is to hold on to a reference to
-      --       the current chunk and prevent its garbage collection until
-      --       the next call to `tsRead`.
-      --       Incorrect management of these references can potentially cause
-      --       either a memory leak or a use-after-free error, since by using
-      --       `unsafeForeignPtrToPtr` we bypass the foreign pointer finalizer.
-      -- NOTE: Despite my best efforts, I have not been able to demonstrate
-      --       that this code without the `IORef` leaks memory.
-      chunkRef <- newIORef BS.empty
-      let tsRead = \byteIndex position_p bytesRead -> do
-            position <- WrapTSPoint <$> peek position_p
-            chunk@(BS chunkForeignPtr chunkLenInt) <- input byteIndex position
-            writeIORef chunkRef chunk
-            let chunkLen = fromIntegral chunkLenInt
-            poke bytesRead chunkLen
-            let chunkPtr = coerce (unsafeForeignPtrToPtr chunkForeignPtr)
-            pure chunkPtr
-      newTreePtr <-
-        C.ts_parser_parse
-          parserPtr
-          (ConstPtr oldTreePtr)
-          tsRead
-          (coerce encoding)
-      toMaybeTree newTreePtr
+    withMaybeTreeAsTSTreePtr oldTree $ \oldTreePtr ->
+      withInputAsTSInput input $ \tsInput -> do
+        toMaybeTree =<< C.ts_parser_parse parserPtr (ConstPtr oldTreePtr) tsInput
+
+type ParseOptionsProgressCallback =
+  -- | Current byte offset.
+  Word32 ->
+  -- | Has error.
+  Bool ->
+  IO Bool
+
+toTSParseOptionsProgressCallbackFunction :: ParseOptionsProgressCallback -> C.TSParseOptionsProgressCallbackFunction
+toTSParseOptionsProgressCallbackFunction parseOptionsProgressCallback currentByteOffset hasError =
+  fromBool <$> parseOptionsProgressCallback currentByteOffset (toBool hasError)
+
+newtype ParseOptions = ParseOptions
+  { parseOptionsProgressCallback :: ParseOptionsProgressCallback
+  }
+
+-- | See @`C.ts_parser_parse_with_options`@.
+parserParseWithOptions :: Parser -> Maybe Tree -> Input -> ParseOptions -> IO (Maybe Tree)
+parserParseWithOptions parser oldTree input ParseOptions{..} =
+  withParserAsTSParserPtr parser $ \parserPtr ->
+    withMaybeTreeAsTSTreePtr oldTree $ \oldTreePtr ->
+      withInputAsTSInput input $ \tsInput -> do
+        C.withTSParseOptions (toTSParseOptionsProgressCallbackFunction parseOptionsProgressCallback) $
+          toMaybeTree <=< C.ts_parser_parse_with_options parserPtr (ConstPtr oldTreePtr) tsInput
 
 -- | See @`C.ts_parser_parse_string`@.
 parserParseString :: Parser -> Maybe Tree -> String -> IO (Maybe Tree)
@@ -707,9 +777,14 @@ parserParseByteString parser oldTree string =
             (fromIntegral stringLen)
         toMaybeTree newTreePtr
 
--- | See @`C.ts_parser_parse_string_encoding`@.
+{-| See @`C.ts_parser_parse_string_encoding`@.
+
+This signature does not support `InputEncodingCustom`.
+Using it with `InputEncodingCustom` dereferences a null-pointer.
+-}
 parserParseByteStringWithEncoding :: Parser -> Maybe Tree -> ByteString -> InputEncoding -> IO (Maybe Tree)
 parserParseByteStringWithEncoding parser oldTree string inputEncoding =
+  -- TODO: This signature does not support custom encodings.
   withParserAsTSParserPtr parser $ \parserPtr ->
     withMaybeTreeAsTSTreePtr oldTree $ \oldTreePtr ->
       BSU.unsafeUseAsCStringLen string $ \(stringPtr, stringLen) -> do
@@ -719,7 +794,7 @@ parserParseByteStringWithEncoding parser oldTree string inputEncoding =
             (ConstPtr oldTreePtr)
             (ConstPtr stringPtr)
             (fromIntegral stringLen)
-            (coerce inputEncoding)
+            (toTSInputEncoding inputEncoding)
         toMaybeTree newTreePtr
 
 -- | See @`C.ts_parser_reset`@.
@@ -1089,6 +1164,22 @@ nodeEq node1 node2 =
   toBool <$> C.ts_node_eq (coerce node1) (coerce node2)
 {-# INLINE nodeEq #-}
 
+-- | See @`C.ts_point_edit`@.
+pointEdit :: Point -> InputEdit -> IO ()
+pointEdit point inputEdit =
+  with (unWrapTSPoint point) $ \pointPtr ->
+    with (unWrapTSInputEdit inputEdit) $ \inputEditPtr ->
+      coerce C.ts_node_edit pointPtr inputEditPtr
+{-# INLINE pointEdit #-}
+
+-- | See @`C.ts_range_edit`@.
+rangeEdit :: Range -> InputEdit -> IO ()
+rangeEdit range inputEdit =
+  with (unWrapTSRange range) $ \rangePtr ->
+    with (unWrapTSInputEdit inputEdit) $ \inputEditPtr ->
+      coerce C.ts_node_edit rangePtr inputEditPtr
+{-# INLINE rangeEdit #-}
+
 -- * TreeCursor
 
 withTreeCursorAsTSTreeCursorPtr :: TreeCursor -> (Ptr C.TSTreeCursor -> IO a) -> IO a
@@ -1412,6 +1503,30 @@ queryCursorExec queryCursor query node =
     withQueryAsTSQueryPtr query $ \queryPtr ->
       coerce C.ts_query_cursor_exec queryCursorPtr queryPtr node
 
+type QueryCursorOptionsProgressCallback =
+  -- | Current byte offset.
+  Word32 ->
+  IO Bool
+
+toTSQueryCursorOptionsProgressCallbackFunction ::
+  QueryCursorOptionsProgressCallback ->
+  C.TSQueryCursorOptionsProgressCallbackFunction
+toTSQueryCursorOptionsProgressCallbackFunction queryCursorOptionsProgressCallback currentByteOffset =
+  fromBool <$> queryCursorOptionsProgressCallback currentByteOffset
+
+newtype QueryCursorOptions = QueryCursorOptions
+  { queryCursorOptionsProgressCallback :: QueryCursorOptionsProgressCallback
+  }
+
+-- | See @`C.ts_query_cursor_exec`@.
+queryCursorExecWithOptions :: QueryCursor -> Query -> Node -> QueryCursorOptions -> IO ()
+queryCursorExecWithOptions queryCursor query node QueryCursorOptions{..} =
+  withQueryCursorAsTSQueryCursorPtr queryCursor $ \queryCursorPtr ->
+    withQueryAsTSQueryPtr query $ \queryPtr ->
+      C.withTSQueryCursorOptions (toTSQueryCursorOptionsProgressCallbackFunction queryCursorOptionsProgressCallback) $ \tsQueryOptions ->
+        with tsQueryOptions $ \tsQueryOptionsPtr ->
+          coerce C.ts_query_cursor_exec_with_options queryCursorPtr queryPtr node (ConstPtr tsQueryOptionsPtr)
+
 -- | See @`C.ts_query_cursor_did_exceed_match_limit`@.
 queryCursorDidExceedMatchLimit :: QueryCursor -> IO Bool
 queryCursorDidExceedMatchLimit queryCursor =
@@ -1431,16 +1546,28 @@ queryCursorSetMatchLimit queryCursor matchLimit =
     C.ts_query_cursor_set_match_limit queryCursorPtr matchLimit
 
 -- | See @`C.ts_query_cursor_set_byte_range`@.
-queryCursorSetByteRange :: QueryCursor -> Word32 -> Word32 -> IO ()
+queryCursorSetByteRange :: QueryCursor -> Word32 -> Word32 -> IO Bool
 queryCursorSetByteRange queryCursor startByte endByte =
   withQueryCursorAsTSQueryCursorPtr queryCursor $ \queryCursorPtr ->
-    C.ts_query_cursor_set_byte_range queryCursorPtr startByte endByte
+    toBool <$> C.ts_query_cursor_set_byte_range queryCursorPtr startByte endByte
 
 -- | See @`C.ts_query_cursor_set_point_range`@.
-queryCursorSetPointRange :: QueryCursor -> Point -> Point -> IO ()
+queryCursorSetPointRange :: QueryCursor -> Point -> Point -> IO Bool
 queryCursorSetPointRange queryCursor startPoint endPoint =
   withQueryCursorAsTSQueryCursorPtr queryCursor $ \queryCursorPtr ->
-    coerce C.ts_query_cursor_set_point_range queryCursorPtr startPoint endPoint
+    toBool <$> C.ts_query_cursor_set_point_range queryCursorPtr (unWrapTSPoint startPoint) (unWrapTSPoint endPoint)
+
+-- | See @`C.ts_query_cursor_set_containing_byte_range`@.
+queryCursorSetContainingByteRange :: QueryCursor -> Word32 -> Word32 -> IO Bool
+queryCursorSetContainingByteRange queryCursor startByte endByte =
+  withQueryCursorAsTSQueryCursorPtr queryCursor $ \queryCursorPtr ->
+    toBool <$> C.ts_query_cursor_set_containing_byte_range queryCursorPtr startByte endByte
+
+-- | See @`C.ts_query_cursor_set_containing_point_range`@.
+queryCursorSetContainingPointRange :: QueryCursor -> Point -> Point -> IO Bool
+queryCursorSetContainingPointRange queryCursor startPoint endPoint =
+  withQueryCursorAsTSQueryCursorPtr queryCursor $ \queryCursorPtr ->
+    toBool <$> C.ts_query_cursor_set_point_range queryCursorPtr (unWrapTSPoint startPoint) (unWrapTSPoint endPoint)
 
 -- | See @`C.ts_query_cursor_next_match`@.
 queryCursorNextMatch :: QueryCursor -> IO (Maybe QueryMatch)
@@ -1559,6 +1686,29 @@ languageFieldIdForName language fieldName =
         fieldNameStr
         (fromIntegral fieldNameLen :: Word32)
 
+-- | See @`C.ts_language_supertypes`@.
+languageSupertypes :: Language -> IO [Symbol]
+languageSupertypes language =
+  alloca $ \lengthOutPtr -> do
+    ConstPtr supertypeArray <-
+      withLanguageAsTSLanguagePtr language $ \languagePtr ->
+        C.ts_language_supertypes languagePtr lengthOutPtr
+    supertypeArrayLen <- fromIntegral @Word32 @Int <$> peek lengthOutPtr
+    coerce @[C.TSSymbol] @[Symbol] <$> peekArray supertypeArrayLen supertypeArray
+
+-- | See @`C.ts_language_subtypes`@.
+languageSubtypes :: Language -> Symbol -> IO [Symbol]
+languageSubtypes language supertype =
+  alloca $ \lengthOutPtr -> do
+    ConstPtr subtypesArray <-
+      withLanguageAsTSLanguagePtr language $ \languagePtr ->
+        C.ts_language_subtypes
+          languagePtr
+          (coerce @Symbol @C.TSSymbol supertype)
+          lengthOutPtr
+    subtypesArrayLen <- fromIntegral @Word32 @Int <$> peek lengthOutPtr
+    coerce @[C.TSSymbol] @[Symbol] <$> peekArray subtypesArrayLen subtypesArray
+
 -- | See @`C.ts_language_symbol_type`@.
 languageSymbolType :: Language -> Symbol -> IO SymbolType
 languageSymbolType language symbol =
@@ -1570,11 +1720,29 @@ languageAbiVersion :: Language -> IO Word32
 languageAbiVersion language =
   withLanguageAsTSLanguagePtr language C.ts_language_abi_version
 
+-- | See @`C.ts_language_abi_version`@.
+languageMetadata :: Language -> IO LanguageMetadata
+languageMetadata language = do
+  C.TSLanguageMetadata{..} <-
+    withLanguageAsTSLanguagePtr language (peek . unConstPtr <=< C.ts_language_metadata)
+  pure
+    LanguageMetadata
+      { majorVersion = major_version
+      , minorVersion = minor_version
+      , patchVersion = patch_version
+      }
+
 -- | See @`C.ts_language_next_state`@.
 languageNextState :: Language -> StateId -> Symbol -> IO StateId
 languageNextState language stateId symbol =
   withLanguageAsTSLanguagePtr language $ \languagePtr ->
     coerce C.ts_language_next_state languagePtr stateId symbol
+
+-- | See @`C.ts_language_name`@.
+languageName :: Language -> IO ByteString
+languageName language =
+  withLanguageAsTSLanguagePtr language $
+    BSU.unsafePackCString <=< coerce C.ts_language_name
 
 -- * Lookahead Iterator
 

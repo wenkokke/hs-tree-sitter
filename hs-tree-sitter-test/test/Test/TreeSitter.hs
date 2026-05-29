@@ -155,11 +155,13 @@ test_parserParse =
             [ "x := 0;"
             , "y := x + 1"
             ]
-    let input :: TS.Input
-        input byteIndex _position = do
+    let inputRead :: TS.InputRead
+        inputRead byteIndex _position = do
           let start = fromIntegral byteIndex - 1
           pure $ BS.take 2 (BS.drop start program)
-    maybeTree <- TS.parserParse parser Nothing input TS.InputEncodingUTF8
+    let input :: TS.Input
+        input = TS.Input inputRead TS.InputEncodingUTF8
+    maybeTree <- TS.parserParse parser Nothing input
     tree <- maybe (assertFailure "failed to parse the program") pure maybeTree
     rootNode <- TS.treeRootNode tree
     rootNodeString <- TS.showNodeAsString rootNode
@@ -178,15 +180,17 @@ test_parseJQuery = do
     -- Get the jQuery source file
     jQueryFile <- getDataFileName "test/data/jQuery.js"
     jQueryContent <- BS.readFile jQueryFile
-    let input :: TS.Input
-        input byteIndex _position = do
+    let inputRead :: TS.InputRead
+        inputRead byteIndex _position = do
           performMinorGC
           let start = fromIntegral byteIndex
           let chunk = BS.take 4096 (BS.drop (start - 1) jQueryContent)
           -- NOTE: copy the chunk to ensure it has its own memory (to leak)
           pure $ BS.copy chunk
+    let input :: TS.Input
+        input = TS.Input inputRead TS.InputEncodingUTF8
     for_ [1 .. 1000] $ \(_time :: Int) -> do
-      maybeTree <- TS.parserParse parser Nothing input TS.InputEncodingUTF8
+      maybeTree <- TS.parserParse parser Nothing input
       tree <- maybe (assertFailure "failed to parse the program") pure maybeTree
       rootNode <- TS.treeRootNode tree
       rootNodeString <- TS.showNodeAsString rootNode

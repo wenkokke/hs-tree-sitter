@@ -8,14 +8,16 @@ author:             Wen Kokke
 maintainer:         wenkokke@users.noreply.github.com
 category:           Language
 build-type:         Simple
-extra-doc-files:    README.md
+extra-doc-files:
+  CHANGELOG.md
+  README.md
+
 extra-source-files:
   vendor/tree-sitter/lib/include/tree_sitter/api.h
   vendor/tree-sitter/lib/src/alloc.c
   vendor/tree-sitter/lib/src/alloc.h
   vendor/tree-sitter/lib/src/array.h
   vendor/tree-sitter/lib/src/atomic.h
-  vendor/tree-sitter/lib/src/clock.h
   vendor/tree-sitter/lib/src/error_costs.h
   vendor/tree-sitter/lib/src/get_changed_ranges.c
   vendor/tree-sitter/lib/src/get_changed_ranges.h
@@ -29,7 +31,9 @@ extra-source-files:
   vendor/tree-sitter/lib/src/node.c
   vendor/tree-sitter/lib/src/parser.c
   vendor/tree-sitter/lib/src/parser.h
+  vendor/tree-sitter/lib/src/point.c
   vendor/tree-sitter/lib/src/point.h
+  vendor/tree-sitter/lib/src/portable/endian.h
   vendor/tree-sitter/lib/src/query.c
   vendor/tree-sitter/lib/src/reduce_action.h
   vendor/tree-sitter/lib/src/reusable_node.h
@@ -49,7 +53,6 @@ extra-source-files:
   vendor/tree-sitter/lib/src/unicode/utf16.h
   vendor/tree-sitter/lib/src/unicode/utf8.h
   vendor/tree-sitter/lib/src/unicode.h
-  vendor/tree-sitter/lib/src/wasm/stdlib.c
   vendor/tree-sitter/lib/src/wasm/wasm-stdlib.h
   vendor/tree-sitter/lib/src/wasm_store.c
   vendor/tree-sitter/lib/src/wasm_store.h

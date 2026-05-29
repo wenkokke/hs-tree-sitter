@@ -8,7 +8,10 @@ author:          Wen Kokke
 maintainer:      wenkokke@users.noreply.github.com
 category:        Language
 build-type:      Simple
-extra-doc-files: README.md
+extra-doc-files:
+  CHANGELOG.md
+  README.md
+
 tested-with:
   GHC ==8.10.7
    || ==9.0.2
@@ -39,18 +42,10 @@ common language
       -optc=-Wno-incompatible-pointer-types-discards-qualifiers
 
 library
-  import:             language
-  exposed-modules:    TreeSitter
-  hs-source-dirs:     src
-  build-depends:      hs-tree-sitter:internal
-  default-extensions: NoImplicitPrelude
-
-library internal
   import:          language
-  visibility:      private
-  hs-source-dirs:  src-internal
-  ghc-options:     -Wno-name-shadowing
-  exposed-modules:
+  hs-source-dirs:  src
+  exposed-modules: TreeSitter
+  other-modules:
     TreeSitter.Internal
     TreeSitter.Internal.ST
 
