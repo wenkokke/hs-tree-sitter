@@ -16,9 +16,9 @@ getTestCorpusDir :: IO FilePath
 getTestCorpusDir = getDataFileName "vendor/tree-sitter-javascript/test/corpus"
 
 data
-  {-# CTYPE "tree-sitter-javascript.h" "TSLanguage" #-}
+  {-# CTYPE "tree_sitter/tree-sitter-javascript.h" "TSLanguage" #-}
   TSLanguage
 
-foreign import capi unsafe "tree-sitter-javascript.h tree_sitter_javascript"
+foreign import capi unsafe "tree_sitter/tree-sitter-javascript.h tree_sitter_javascript"
   tree_sitter_javascript ::
     IO (ConstPtr TSLanguage)
