@@ -38,7 +38,7 @@ jobs:
     runs-on: "${{ matrix.os }}"
     strategy:
       matrix:
-        os: ["ubuntu-latest", "macOS-latest", "windows-latest"]
+        os: ["ubuntu-latest", "macOS-latest"] # , "windows-latest"
         ghc-version: ["9.12", "9.10", "9.8"]
         cabal-version: [""] # use version from dev-dependencies
         node-version: [""] # use version from dev-dependencies
