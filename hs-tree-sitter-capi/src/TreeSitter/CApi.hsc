@@ -27,7 +27,7 @@ module TreeSitter.CApi
   , TSQuery
   , TSQueryCursor
   , TSLookaheadIterator
-  , TSInputEncoding (TSInputEncodingUTF8, TSInputEncodingUTF16, ..)
+  , TSInputEncoding (TSInputEncodingUTF8, TSInputEncodingUTF16LE, TSInputEncodingUTF16BE, TSInputEncodingCustom, ..)
   , TSSymbolType (TSSymbolTypeRegular, TSSymbolTypeAnonymous, TSSymbolTypeSupertype, TSSymbolTypeAuxiliary, ..)
   , TSPoint (..)
   , TSRange (..)
@@ -63,10 +63,6 @@ module TreeSitter.CApi
   , ts_parser_parse_string
   , ts_parser_parse_string_encoding
   , ts_parser_reset
-  , ts_parser_set_timeout_micros
-  , ts_parser_timeout_micros
-  , ts_parser_set_cancellation_flag
-  , ts_parser_cancellation_flag
   , ts_parser_print_dot_graphs
 
     -- * Tree
@@ -173,8 +169,6 @@ module TreeSitter.CApi
   , ts_query_cursor_did_exceed_match_limit
   , ts_query_cursor_match_limit
   , ts_query_cursor_set_match_limit
-  , ts_query_cursor_set_timeout_micros
-  , ts_query_cursor_timeout_micros
   , ts_query_cursor_set_byte_range
   , ts_query_cursor_set_point_range
   , ts_query_cursor_next_match
@@ -194,7 +188,7 @@ module TreeSitter.CApi
   , ts_language_field_name_for_id
   , ts_language_field_id_for_name
   , ts_language_symbol_type
-  , ts_language_version
+  , ts_language_abi_version
   , ts_language_next_state
 
     -- * Lookahead Iterator
@@ -347,7 +341,9 @@ data
 {-|
   > typedef enum TSInputEncoding {
   >   TSInputEncodingUTF8,
-  >   TSInputEncodingUTF16,
+  >   TSInputEncodingUTF16LE,
+  >   TSInputEncodingUTF16BE,
+  >   TSInputEncodingCustom,
   > } TSInputEncoding;
   -}
 newtype
@@ -361,10 +357,16 @@ newtype
 pattern TSInputEncodingUTF8 :: TSInputEncoding
 pattern TSInputEncodingUTF8 = TSInputEncoding ( #{const TSInputEncodingUTF8} )
 
-pattern TSInputEncodingUTF16 :: TSInputEncoding
-pattern TSInputEncodingUTF16 = TSInputEncoding ( #{const TSInputEncodingUTF16} )
+pattern TSInputEncodingUTF16LE :: TSInputEncoding
+pattern TSInputEncodingUTF16LE = TSInputEncoding ( #{const TSInputEncodingUTF16LE} )
 
-{-# COMPLETE TSInputEncodingUTF8, TSInputEncodingUTF16 #-}
+pattern TSInputEncodingUTF16BE :: TSInputEncoding
+pattern TSInputEncodingUTF16BE = TSInputEncoding ( #{const TSInputEncodingUTF16BE} )
+
+pattern TSInputEncodingCustom :: TSInputEncoding
+pattern TSInputEncodingCustom = TSInputEncoding ( #{const TSInputEncodingCustom} )
+
+{-# COMPLETE TSInputEncodingUTF8, TSInputEncodingUTF16LE, TSInputEncodingUTF16BE, TSInputEncodingCustom #-}
 
 {-|
   > typedef enum TSSymbolType {
@@ -1040,7 +1042,7 @@ foreign import capi unsafe "tree_sitter/api.h ts_parser_language"
   Returns a boolean indicating whether or not the language was successfully
   assigned. True means assignment succeeded. False means there was a version
   mismatch: the language was generated with an incompatible version of the
-  Tree-sitter CLI. Check the language's version using @`ts_language_version`@
+  Tree-sitter CLI. Check the language's version using @`ts_language_abi_version`@
   and compare it to this library's @`TREE_SITTER_LANGUAGE_VERSION`@ and
   @`TREE_SITTER_MIN_COMPATIBLE_LANGUAGE_VERSION`@ constants.
 
@@ -1239,56 +1241,6 @@ foreign import capi unsafe "tree_sitter/api.h ts_parser_reset"
   ts_parser_reset ::
     Ptr TSParser ->
     IO ()
-
-{-|
-  Set the maximum duration in microseconds that parsing should be allowed to
-  take before halting.
-
-  If parsing takes longer than this, it will halt early, returning @NULL@.
-  See @`ts_parser_parse`@ for more information.
-
-  > void ts_parser_set_timeout_micros(TSParser *self, uint64_t timeout_micros);
--}
-foreign import capi unsafe "tree_sitter/api.h ts_parser_set_timeout_micros"
-  ts_parser_set_timeout_micros ::
-    Ptr TSParser ->
-    ( #{type uint64_t} ) ->
-    IO ()
-
-{-|
-  Get the duration in microseconds that parsing is allowed to take.
-
-  > uint64_t ts_parser_timeout_micros(const TSParser *self);
--}
-foreign import capi unsafe "tree_sitter/api.h ts_parser_timeout_micros"
-  ts_parser_timeout_micros ::
-    Ptr TSParser ->
-    IO ( #{type uint64_t} )
-
-{-|
-  Set the parser's current cancellation flag pointer.
-
-  If a non-null pointer is assigned, then the parser will periodically read
-  from this pointer during parsing. If it reads a non-zero value, it will
-  halt early, returning @NULL@. See @`ts_parser_parse`@ for more information.
-
-  > void ts_parser_set_cancellation_flag(TSParser *self, const size_t *flag);
--}
-foreign import capi unsafe "tree_sitter/api.h ts_parser_set_cancellation_flag"
-  ts_parser_set_cancellation_flag ::
-    Ptr TSParser ->
-    ConstPtr CSize ->
-    IO ()
-
-{-|
-  Get the parser's current cancellation flag pointer.
-
-  > const size_t *ts_parser_cancellation_flag(const TSParser *self);
--}
-foreign import capi unsafe "tree_sitter/api.h ts_parser_cancellation_flag"
-  ts_parser_cancellation_flag ::
-    ConstPtr TSParser ->
-    IO (ConstPtr CSize)
 
 {-|
   Set the logger that a parser should use during parsing.
@@ -3502,33 +3454,6 @@ foreign import capi unsafe "tree_sitter/api.h ts_query_cursor_set_match_limit"
     IO ()
 
 {-|
-  Set the maximum duration in microseconds that query execution should be allowed to
-  take before halting.
-
-  If query execution takes longer than this, it will halt early, returning @NULL@.
-  See @`ts_query_cursor_next_match`@ or @`ts_query_cursor_next_capture`@ for more information.
-
-  > void ts_query_cursor_set_timeout_micros(TSQueryCursor *self, uint64_t timeout_micros);
--}
-foreign import capi unsafe "tree_sitter/api.h ts_query_cursor_set_timeout_micros"
-  ts_query_cursor_set_timeout_micros ::
-    Ptr TSQueryCursor ->
-    ( #{type uint64_t} ) ->
-    IO ()
-
-{-|
-  Get the duration in microseconds that query execution is allowed to take.
-
-  This is set via @`ts_query_cursor_set_timeout_micros`@.
-
-  > uint64_t ts_query_cursor_timeout_micros(const TSQueryCursor *self);
--}
-foreign import capi unsafe "tree_sitter/api.h ts_query_cursor_timeout_micros"
-  ts_query_cursor_timeout_micros ::
-    ConstPtr TSQueryCursor ->
-    IO ( #{type uint64_t} )
-
-{-|
   Set the range of bytes in which the query will be executed.
 
   > void ts_query_cursor_set_byte_range(TSQueryCursor *self, uint32_t start_byte, uint32_t end_byte);
@@ -3771,10 +3696,10 @@ foreign import capi unsafe "tree_sitter/api.h ts_language_symbol_type"
 
   See also @`ts_parser_set_language`@.
 
-  > uint32_t ts_language_version(const TSLanguage *self);
+  > uint32_t ts_language_abi_version(const TSLanguage *self);
 -}
-foreign import capi unsafe "tree_sitter/api.h ts_language_version"
-  ts_language_version ::
+foreign import capi unsafe "tree_sitter/api.h ts_language_abi_version"
+  ts_language_abi_version ::
     ConstPtr TSLanguage ->
     IO ( #{type uint32_t} )
 

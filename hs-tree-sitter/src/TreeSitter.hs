@@ -20,7 +20,7 @@ module TreeSitter (
   Query,
   QueryCursor,
   LookaheadIterator,
-  InputEncoding (InputEncodingUTF8, InputEncodingUTF16),
+  InputEncoding (InputEncodingUTF8, InputEncodingUTF16LE, InputEncodingUTF16BE, InputEncodingCustom),
   SymbolType (SymbolTypeRegular, SymbolTypeAnonymous, SymbolTypeSupertype, SymbolTypeAuxiliary),
   Point (Point, pointColumn, pointRow),
   Range (Range, rangeStartPoint, rangeEndPoint, rangeStartByte, rangeEndByte),
@@ -57,15 +57,6 @@ module TreeSitter (
   parserParseByteString,
   parserParseByteStringWithEncoding,
   parserReset,
-  Microsecond (..),
-  parserSetTimeoutMicros,
-  parserTimeoutMicros,
-  CancellationFlag (Cancel, Continue),
-  CancellationFlagRef,
-  getCancellationFlag,
-  putCancellationFlag,
-  parserSetCancellationFlag,
-  parserCancellationFlag,
   parserPrintDotGraphs,
 
   -- * Tree
@@ -172,8 +163,6 @@ module TreeSitter (
   queryCursorDidExceedMatchLimit,
   queryCursorMatchLimit,
   queryCursorSetMatchLimit,
-  queryCursorSetTimeoutMicros,
-  queryCursorTimeoutMicros,
   queryCursorSetByteRange,
   queryCursorSetPointRange,
   queryCursorNextMatch,
@@ -193,7 +182,7 @@ module TreeSitter (
   languageFieldNameForId,
   languageFieldIdForName,
   languageSymbolType,
-  languageVersion,
+  languageAbiVersion,
   languageNextState,
 
   -- * Lookahead Iterator

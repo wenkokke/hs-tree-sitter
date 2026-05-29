@@ -1,6 +1,6 @@
 cabal-version:   3.4
 name:            hs-tree-sitter
-version:         13.0.14.0
+version:         13.1.15.0
 license:         AGPL-3.0-only
 synopsis:        High-level bindings for tree-sitter
 description:     High-level bindings for tree-sitter.
@@ -58,4 +58,4 @@ library internal
     , base                  >=4.13 && <5
     , base-compat-constptr  >=0.1  && <0.2
     , bytestring            >=0.11 && <0.13
-    , hs-tree-sitter-capi   >=13.0 && <13.1
+    , hs-tree-sitter-capi   >=13.1 && <13.2

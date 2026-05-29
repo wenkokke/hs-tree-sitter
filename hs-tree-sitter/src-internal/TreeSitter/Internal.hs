@@ -31,7 +31,7 @@ module TreeSitter.Internal (
   Query,
   QueryCursor,
   LookaheadIterator,
-  InputEncoding (InputEncodingUTF8, InputEncodingUTF16),
+  InputEncoding (InputEncodingUTF8, InputEncodingUTF16LE, InputEncodingUTF16BE, InputEncodingCustom),
   SymbolType (SymbolTypeRegular, SymbolTypeAnonymous, SymbolTypeSupertype, SymbolTypeAuxiliary),
   Point (Point, pointColumn, pointRow),
   Range (Range, rangeStartPoint, rangeEndPoint, rangeStartByte, rangeEndByte),
@@ -68,15 +68,6 @@ module TreeSitter.Internal (
   parserParseByteString,
   parserParseByteStringWithEncoding,
   parserReset,
-  Microsecond (..),
-  parserSetTimeoutMicros,
-  parserTimeoutMicros,
-  CancellationFlag (Cancel, Continue),
-  CancellationFlagRef,
-  getCancellationFlag,
-  putCancellationFlag,
-  parserSetCancellationFlag,
-  parserCancellationFlag,
   parserPrintDotGraphs,
 
   -- * Tree
@@ -183,8 +174,6 @@ module TreeSitter.Internal (
   queryCursorDidExceedMatchLimit,
   queryCursorMatchLimit,
   queryCursorSetMatchLimit,
-  queryCursorSetTimeoutMicros,
-  queryCursorTimeoutMicros,
   queryCursorSetByteRange,
   queryCursorSetPointRange,
   queryCursorNextMatch,
@@ -204,7 +193,7 @@ module TreeSitter.Internal (
   languageFieldNameForId,
   languageFieldIdForName,
   languageSymbolType,
-  languageVersion,
+  languageAbiVersion,
   languageNextState,
 
   -- * Lookahead Iterator
@@ -232,7 +221,7 @@ import Data.Coerce (coerce)
 import Data.IORef (newIORef, writeIORef)
 import Data.Maybe (isJust)
 import Foreign
-import Foreign.C (CBool, CInt (CInt), CSize (..))
+import Foreign.C (CBool, CInt (CInt))
 import Foreign.C.ConstPtr.Compat (ConstPtr (..))
 import Foreign.ForeignPtr.Unsafe (unsafeForeignPtrToPtr)
 import GHC.IO.FD (FD (..))
@@ -294,14 +283,22 @@ newtype InputEncoding = WrapTSInputEncoding {unWrapTSInputEncoding :: C.TSInputE
 pattern InputEncodingUTF8 :: InputEncoding
 pattern InputEncodingUTF8 = WrapTSInputEncoding C.TSInputEncodingUTF8
 
-pattern InputEncodingUTF16 :: InputEncoding
-pattern InputEncodingUTF16 = WrapTSInputEncoding C.TSInputEncodingUTF16
+pattern InputEncodingUTF16LE :: InputEncoding
+pattern InputEncodingUTF16LE = WrapTSInputEncoding C.TSInputEncodingUTF16LE
 
-{-# COMPLETE InputEncodingUTF8, InputEncodingUTF16 #-}
+pattern InputEncodingUTF16BE :: InputEncoding
+pattern InputEncodingUTF16BE = WrapTSInputEncoding C.TSInputEncodingUTF16BE
+
+pattern InputEncodingCustom :: InputEncoding
+pattern InputEncodingCustom = WrapTSInputEncoding C.TSInputEncodingCustom
+
+{-# COMPLETE InputEncodingUTF8, InputEncodingUTF16LE, InputEncodingUTF16BE, InputEncodingCustom #-}
 
 instance Show InputEncoding where
   show InputEncodingUTF8 = "InputEncodingUTF8"
-  show InputEncodingUTF16 = "InputEncodingUTF16"
+  show InputEncodingUTF16LE = "InputEncodingUTF16LE"
+  show InputEncodingUTF16BE = "InputEncodingUTF16BE"
+  show InputEncodingCustom = "InputEncodingCustom"
 
 newtype SymbolType = WrapTSSymbolType {unWrapTSSymbolType :: C.TSSymbolType}
   deriving stock (Eq)
@@ -728,61 +725,6 @@ parserParseByteStringWithEncoding parser oldTree string inputEncoding =
 -- | See @`C.ts_parser_reset`@.
 parserReset :: Parser -> IO ()
 parserReset = (`withParserAsTSParserPtr` C.ts_parser_reset)
-
--- | Microseconds.
-newtype Microsecond = Microsecond {unMicrosecond :: Word64}
-  deriving stock (Show, Read, Eq, Ord)
-  deriving newtype (Num, Real, Integral, Enum)
-
--- | See @`C.ts_parser_set_timeout_micros`@.
-parserSetTimeoutMicros :: Parser -> Microsecond -> IO ()
-parserSetTimeoutMicros parser ms =
-  withParserAsTSParserPtr parser $ \parserPtr ->
-    coerce C.ts_parser_set_timeout_micros parserPtr ms
-
--- | See @`C.ts_parser_timeout_micros`@.
-parserTimeoutMicros :: Parser -> IO Microsecond
-parserTimeoutMicros parser =
-  withParserAsTSParserPtr parser $
-    coerce C.ts_parser_timeout_micros
-
-newtype CancellationFlag = WrapTSCancellationFlag {unWrapTSCancellationFlag :: CSize}
-
-isContinue :: CancellationFlag -> Bool
-isContinue = (== 0) . unWrapTSCancellationFlag
-{-# INLINE isContinue #-}
-
-pattern Continue :: CancellationFlag
-pattern Continue = WrapTSCancellationFlag 0
-
-pattern Cancel :: CancellationFlag
-pattern Cancel <- (isContinue -> False)
-  where
-    Cancel = WrapTSCancellationFlag 1
-
-{-# COMPLETE Continue, Cancel #-}
-
-newtype CancellationFlagRef = CancellationFlagRef {unCancellationFlagRef :: ConstPtr CSize}
-
-putCancellationFlag :: CancellationFlagRef -> CancellationFlag -> IO ()
-putCancellationFlag = coerce (poke @CSize)
-{-# INLINE putCancellationFlag #-}
-
-getCancellationFlag :: CancellationFlagRef -> IO CancellationFlag
-getCancellationFlag = coerce (peek @CSize)
-{-# INLINE getCancellationFlag #-}
-
--- | See @`C.ts_parser_set_cancellation_flag`@.
-parserSetCancellationFlag :: Parser -> CancellationFlagRef -> IO ()
-parserSetCancellationFlag parser cancellationFlagRef =
-  withParserAsTSParserPtr parser $ \parserPtr ->
-    coerce C.ts_parser_set_cancellation_flag parserPtr cancellationFlagRef
-
--- | See @`C.ts_parser_cancellation_flag`@.
-parserCancellationFlag :: Parser -> IO CancellationFlagRef
-parserCancellationFlag parser =
-  withParserAsTSParserPtr parser $ \parserPtr ->
-    coerce C.ts_parser_cancellation_flag parserPtr
 
 {-| See @'C.ts_parser_print_dot_graphs'@.
 | This function throws an 'IOError' if the 'Handle' does not reference a file descriptor.
@@ -1488,18 +1430,6 @@ queryCursorSetMatchLimit queryCursor matchLimit =
   withQueryCursorAsTSQueryCursorPtr queryCursor $ \queryCursorPtr ->
     C.ts_query_cursor_set_match_limit queryCursorPtr matchLimit
 
--- | See @`C.ts_query_cursor_set_timeout_micros`@.
-queryCursorSetTimeoutMicros :: QueryCursor -> Microsecond -> IO ()
-queryCursorSetTimeoutMicros queryCursor micros =
-  withQueryCursorAsTSQueryCursorPtr queryCursor $ \queryCursorPtr ->
-    coerce C.ts_query_cursor_set_timeout_micros queryCursorPtr micros
-
--- | See @`C.ts_query_cursor_timeout_micros`@.
-queryCursorTimeoutMicros :: QueryCursor -> IO Microsecond
-queryCursorTimeoutMicros queryCursor =
-  withQueryCursorAsTSQueryCursorPtr queryCursor $
-    coerce C.ts_query_cursor_timeout_micros
-
 -- | See @`C.ts_query_cursor_set_byte_range`@.
 queryCursorSetByteRange :: QueryCursor -> Word32 -> Word32 -> IO ()
 queryCursorSetByteRange queryCursor startByte endByte =
@@ -1635,10 +1565,10 @@ languageSymbolType language symbol =
   withLanguageAsTSLanguagePtr language $ \languagePtr ->
     coerce C.ts_language_symbol_type languagePtr symbol
 
--- | See @`C.ts_language_version`@.
-languageVersion :: Language -> IO Word32
-languageVersion language =
-  withLanguageAsTSLanguagePtr language C.ts_language_version
+-- | See @`C.ts_language_abi_version`@.
+languageAbiVersion :: Language -> IO Word32
+languageAbiVersion language =
+  withLanguageAsTSLanguagePtr language C.ts_language_abi_version
 
 -- | See @`C.ts_language_next_state`@.
 languageNextState :: Language -> StateId -> Symbol -> IO StateId
