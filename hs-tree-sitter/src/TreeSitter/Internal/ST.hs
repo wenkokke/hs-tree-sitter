@@ -96,7 +96,7 @@ module TreeSitter.Internal.ST (
   languageFieldNameForId,
   languageFieldIdForName,
   languageSymbolType,
-  languageVersion,
+  languageAbiVersion,
   languageNextState,
 ) where
 
@@ -495,9 +495,9 @@ languageFieldIdForName = (unsafeIOToST .) . coerce TSIO.languageFieldIdForName
 languageSymbolType :: Language s -> Symbol -> ST s SymbolType
 languageSymbolType = (unsafeIOToST .) . coerce TSIO.languageSymbolType
 
--- | See @`C.ts_language_version`@.
-languageVersion :: Language s -> ST s Word32
-languageVersion = unsafeIOToST . coerce TSIO.languageVersion
+-- | See @`C.ts_language_abi_version`@.
+languageAbiVersion :: Language s -> ST s Word32
+languageAbiVersion = unsafeIOToST . coerce TSIO.languageAbiVersion
 
 -- | See @`C.ts_language_next_state`@.
 languageNextState :: Language s -> StateId -> Symbol -> ST s StateId

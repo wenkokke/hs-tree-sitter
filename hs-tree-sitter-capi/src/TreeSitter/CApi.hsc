@@ -27,12 +27,20 @@ module TreeSitter.CApi
   , TSQuery
   , TSQueryCursor
   , TSLookaheadIterator
-  , TSInputEncoding (TSInputEncodingUTF8, TSInputEncodingUTF16, ..)
+  , TSDecodeFunction
+  , TSInputEncoding (TSInputEncodingUTF8, TSInputEncodingUTF16LE, TSInputEncodingUTF16BE, TSInputEncodingCustom, ..)
   , TSSymbolType (TSSymbolTypeRegular, TSSymbolTypeAnonymous, TSSymbolTypeSupertype, TSSymbolTypeAuxiliary, ..)
   , TSPoint (..)
   , TSRange (..)
-  , TSInput
-  , TSRead
+  , TSInputRead
+  , TSInputReadFunction
+  , TSInput (..)
+  , withTSInput
+  , TSParseState (..)
+  , TSParseOptionsProgressCallback
+  , TSParseOptionsProgressCallbackFunction
+  , TSParseOptions (..)
+  , withTSParseOptions
   , TSLogType (TSLogTypeParse, TSLogTypeLex, ..)
   , TSLogger
   , TSLog
@@ -47,6 +55,11 @@ module TreeSitter.CApi
   , TSQueryPredicateStepType (TSQueryPredicateStepTypeDone, TSQueryPredicateStepTypeCapture, TSQueryPredicateStepTypeString, ..)
   , TSQueryPredicateStep (..)
   , TSQueryError (TSQueryErrorNone, TSQueryErrorSyntax, TSQueryErrorNodeType, TSQueryErrorField, TSQueryErrorCapture, TSQueryErrorStructure, TSQueryErrorLanguage, ..)
+  , TSQueryCursorOptionsProgressCallback
+  , TSQueryCursorOptionsProgressCallbackFunction
+  , TSQueryCursorOptions (..)
+  , withTSQueryCursorOptions
+  , TSLanguageMetadata (..)
 
     -- * Parser
   , ts_parser_new
@@ -60,13 +73,10 @@ module TreeSitter.CApi
   , ts_parser_logger
   , ts_parser_remove_logger
   , ts_parser_parse
+  , ts_parser_parse_with_options
   , ts_parser_parse_string
   , ts_parser_parse_string_encoding
   , ts_parser_reset
-  , ts_parser_set_timeout_micros
-  , ts_parser_timeout_micros
-  , ts_parser_set_cancellation_flag
-  , ts_parser_cancellation_flag
   , ts_parser_print_dot_graphs
 
     -- * Tree
@@ -124,6 +134,8 @@ module TreeSitter.CApi
   , ts_node_named_descendant_for_point_range
   , ts_node_edit
   , ts_node_eq
+  , ts_point_edit
+  , ts_range_edit
 
     -- * TreeCursor
   , ts_tree_cursor_new
@@ -170,13 +182,14 @@ module TreeSitter.CApi
   , ts_query_cursor_delete
   , p_ts_query_cursor_delete
   , ts_query_cursor_exec
+  , ts_query_cursor_exec_with_options
   , ts_query_cursor_did_exceed_match_limit
   , ts_query_cursor_match_limit
   , ts_query_cursor_set_match_limit
-  , ts_query_cursor_set_timeout_micros
-  , ts_query_cursor_timeout_micros
   , ts_query_cursor_set_byte_range
   , ts_query_cursor_set_point_range
+  , ts_query_cursor_set_containing_byte_range
+  , ts_query_cursor_set_containing_point_range
   , ts_query_cursor_next_match
   , ts_query_cursor_remove_match
   , ts_query_cursor_next_capture
@@ -193,9 +206,13 @@ module TreeSitter.CApi
   , ts_language_field_count
   , ts_language_field_name_for_id
   , ts_language_field_id_for_name
+  , ts_language_supertypes
+  , ts_language_subtypes
   , ts_language_symbol_type
-  , ts_language_version
+  , ts_language_abi_version
+  , ts_language_metadata
   , ts_language_next_state
+  , ts_language_name
 
     -- * Lookahead Iterator
   , ts_lookahead_iterator_new
@@ -283,6 +300,7 @@ newtype
   TSStateId = TSStateId #{type TSStateId}
   deriving stock (Show, Read, Eq, Ord)
   deriving newtype (Num, Real, Integral, Enum)
+  deriving newtype Storable -- @since 13.1.15.0
 
 {-|
   > typedef uint16_t TSSymbol;
@@ -292,6 +310,7 @@ newtype
   TSSymbol = TSSymbol #{type TSSymbol}
   deriving stock (Show, Read, Eq, Ord)
   deriving newtype (Num, Real, Integral, Enum)
+  deriving newtype Storable -- @since 13.1.15.0
 
 {-|
   > typedef uint16_t TSFieldId;
@@ -301,6 +320,7 @@ newtype
   TSFieldId = TSFieldId #{type TSFieldId}
   deriving stock (Show, Read, Eq, Ord)
   deriving newtype (Num, Real, Integral, Enum)
+  deriving newtype Storable -- @since 13.1.15.0
 
 {-|
   > typedef struct TSLanguage TSLanguage;
@@ -345,9 +365,42 @@ data
   TSLookaheadIterator
 
 {-|
+  This function signature reads one code point from the given string,
+  returning the number of bytes consumed. It should write the code point
+  to the @code_point@ pointer, or write @-1@ if the input is invalid.
+
+  > typedef uint32_t (*TSDecodeFunction)(
+  >   const uint8_t *string,
+  >   uint32_t length,
+  >   int32_t *code_point
+  > );
+  -}
+type TSDecodeFunction =
+  ConstPtr ( #{type uint8_t} ) ->
+  -- ^ The input string.
+  ( #{type uint32_t} ) ->
+  -- ^ The input string length.
+  Ptr ( #{type int32_t} ) ->
+  -- ^ The output pointer for the code point.
+  IO ( #{type uint32_t} )
+  -- ^ The number of bytes consumed.
+
+-- | Convert a Haskell 'TSDecodeFunction' closure to a C 'TSDecodeFunction' function pointer.
+foreign import ccall "wrapper"
+  mkTSDecodeFunctionFunPtr :: TSDecodeFunction -> IO (FunPtr TSDecodeFunction)
+
+withTSDecodeFunctionFunPtr :: TSDecodeFunction -> (FunPtr TSDecodeFunction -> IO r) -> IO r
+withTSDecodeFunctionFunPtr decodeFunction = bracket (mkTSDecodeFunctionFunPtr decodeFunction) freeHaskellFunPtr
+
+withMaybeTSDecodeFunctionFunPtr :: Maybe TSDecodeFunction -> (FunPtr TSDecodeFunction -> IO r) -> IO r
+withMaybeTSDecodeFunctionFunPtr = maybe ($ nullFunPtr) withTSDecodeFunctionFunPtr
+
+{-|
   > typedef enum TSInputEncoding {
   >   TSInputEncodingUTF8,
-  >   TSInputEncodingUTF16,
+  >   TSInputEncodingUTF16LE,
+  >   TSInputEncodingUTF16BE,
+  >   TSInputEncodingCustom,
   > } TSInputEncoding;
   -}
 newtype
@@ -361,10 +414,16 @@ newtype
 pattern TSInputEncodingUTF8 :: TSInputEncoding
 pattern TSInputEncodingUTF8 = TSInputEncoding ( #{const TSInputEncodingUTF8} )
 
-pattern TSInputEncodingUTF16 :: TSInputEncoding
-pattern TSInputEncodingUTF16 = TSInputEncoding ( #{const TSInputEncodingUTF16} )
+pattern TSInputEncodingUTF16LE :: TSInputEncoding
+pattern TSInputEncodingUTF16LE = TSInputEncoding ( #{const TSInputEncodingUTF16LE} )
 
-{-# COMPLETE TSInputEncodingUTF8, TSInputEncodingUTF16 #-}
+pattern TSInputEncodingUTF16BE :: TSInputEncoding
+pattern TSInputEncodingUTF16BE = TSInputEncoding ( #{const TSInputEncodingUTF16BE} )
+
+pattern TSInputEncodingCustom :: TSInputEncoding
+pattern TSInputEncodingCustom = TSInputEncoding ( #{const TSInputEncodingCustom} )
+
+{-# COMPLETE TSInputEncodingUTF8, TSInputEncodingUTF16LE, TSInputEncodingUTF16BE, TSInputEncodingCustom #-}
 
 {-|
   > typedef enum TSSymbolType {
@@ -453,54 +512,102 @@ instance Storable TSRange where
     #{poke TSRange, start_byte} ptr start_byte
     #{poke TSRange, end_byte} ptr end_byte
 
-{-|
-  > typedef struct TSInput {
-  >   void *payload;
-  >   const char *(*read)(
-  >     void *payload,
-  >     uint32_t byte_index,
-  >     TSPoint position,
-  >     uint32_t *bytes_read
-  >   );
-  >   TSInputEncoding encoding;
-  > } TSInput;
-  -}
-data
-  {-# CTYPE "tree_sitter/api.h" "struct TSInput" #-}
-  TSInput
-
-{-| The type of the @`read`@ argument of the @`_wrap_ts_input_new`@ function.
-
-  > typedef const char *(*TSRead)(
-  >   uint32_t byte_index,
-  >   TSPoint *position,
-  >   uint32_t *bytes_read
-  > );
-  -}
-type TSRead =
-  ( #{type uint32_t} ) ->
-  Ptr TSPoint ->
-  Ptr ( #{type uint32_t} ) ->
-  IO (ConstPtr CChar)
-
--- | Convert a Haskell 'TSRead' closure to a C 'TSRead' function pointer.
-foreign import ccall "wrapper"
-  mkTSReadFunPtr :: TSRead -> IO (FunPtr TSRead)
-
 #{def
   typedef const char *(*TSRead)(
+    void *payload,
     uint32_t byte_index,
     TSPoint *position,
     uint32_t *bytes_read
   );
 }
 
--- | Create a @`TSInput`@.
-foreign import capi unsafe "TreeSitter/CApi_hsc.h _wrap_ts_input_new"
-  _wrap_ts_input_new ::
-    FunPtr TSRead ->
-    TSInputEncoding ->
-    IO (Ptr TSInput)
+{-|
+  The type of the @read@ member of the `TSInput` struct.
+-}
+type TSInputRead a =
+  Ptr a ->
+  ( #{type uint32_t} ) ->
+  TSPoint ->
+  Ptr ( #{type uint32_t} ) ->
+  IO (ConstPtr CChar)
+
+{-|
+  > typedef struct TSInput {
+  >   void *payload;
+  >   TSRead read;
+  >   TSInputEncoding encoding;
+  >   TSDecodeFunction decode;
+  > } TSInput;
+  -}
+data
+  {-# CTYPE "tree_sitter/api.h" "struct TSInput" #-}
+  TSInput = forall a. TSInput
+  { payload :: !(Ptr a)
+  , read_ :: !(FunPtr (TSInputRead a))
+  , encoding :: !TSInputEncoding
+  , decode :: !(FunPtr TSDecodeFunction)
+  }
+
+instance Storable TSInput where
+  alignment _ = #{alignment TSInput}
+  sizeOf _ = #{size TSInput}
+  peek ptr = do
+    payload <- #{peek TSInput, payload} ptr
+    read_ <- #{peek TSInput, read} ptr
+    encoding <- #{peek TSInput, encoding} ptr
+    decode <- #{peek TSInput, decode} ptr
+    return TSInput{..}
+  poke ptr TSInput{..} = do
+    #{poke TSInput, payload} ptr payload
+    #{poke TSInput, read} ptr read_
+    #{poke TSInput, encoding} ptr encoding
+    #{poke TSInput, decode} ptr decode
+
+#{def
+  typedef const char *(*TSInputReadFunction)(
+    uint32_t byte_index,
+    TSPoint *position,
+    uint32_t *bytes_read
+  );
+}
+
+type TSInputReadFunction =
+  ( #{type uint32_t} ) ->
+  Ptr TSPoint ->
+  Ptr ( #{type uint32_t} ) ->
+  IO (ConstPtr CChar)
+
+-- | Convert a Haskell 'TSInputReadFunction' closure to a C 'TSInputReadFunction' function pointer.
+foreign import ccall "wrapper"
+  mkTSInputFunctionFunPtr :: TSInputReadFunction -> IO (FunPtr TSInputReadFunction)
+
+withTSInputReadFunctionFunPtr ::
+  TSInputReadFunction ->
+  (FunPtr TSInputReadFunction -> IO r) ->
+  IO r
+withTSInputReadFunctionFunPtr readFunction =
+  bracket (mkTSInputFunctionFunPtr readFunction) freeHaskellFunPtr
+
+withTSInput :: TSInputReadFunction -> TSInputEncoding -> Maybe TSDecodeFunction -> (TSInput -> IO r) -> IO r
+withTSInput readFunction encoding maybeDecodeFunction action =
+  withTSInputReadFunctionFunPtr readFunction $ \readFunPtr ->
+    withMaybeTSDecodeFunctionFunPtr maybeDecodeFunction $ \decodeFunPtr ->
+      action TSInput
+        { payload = castFunPtrToPtr readFunPtr
+        , read_ = _wrap_ts_input_read_p
+        , encoding = encoding
+        , decode = decodeFunPtr
+        }
+
+foreign import capi unsafe "TreeSitter/CApi_hsc.h &_wrap_ts_input_read"
+  _wrap_ts_input_read_p ::
+    FunPtr (
+      Ptr TSInputReadFunction ->
+      ( #{type uint32_t} ) ->
+      TSPoint ->
+      Ptr ( #{type uint32_t} ) ->
+      IO (ConstPtr CChar)
+    )
 
 #{def
   const char *_wrap_ts_input_read(
@@ -509,39 +616,123 @@ foreign import capi unsafe "TreeSitter/CApi_hsc.h _wrap_ts_input_new"
     TSPoint position,
     uint32_t *bytes_read
   ) {
-    TSRead read;
-    memcpy(&read, payload, sizeof read);
+    TSInputReadFunction read;
+    memcpy(&read, &payload, sizeof read);
     TSPoint *position_p = &position;
     return read(byte_index, position_p, bytes_read);
   }
 }
 
+{-|
+  > typedef struct TSParseState {
+  >   void *payload;
+  >   uint32_t current_byte_offset;
+  >   bool has_error;
+  > } TSParseState;
+  -}
+data
+  {-# CTYPE "tree_sitter/api.h" "TSParseState" #-}
+  TSParseState a = TSParseState
+    { payload :: !(Ptr a)
+    , current_byte_offset :: !( #{type uint32_t} )
+    , has_error :: !CBool
+    }
+
+instance Storable (TSParseState a) where
+  alignment _ = #{alignment TSParseState}
+  sizeOf _ = #{size TSParseState}
+  peek ptr = do
+    payload <- #{peek TSParseState, payload} ptr
+    current_byte_offset <- #{peek TSParseState, current_byte_offset} ptr
+    has_error <- #{peek TSParseState, has_error} ptr
+    return TSParseState{..}
+  poke ptr TSParseState{..} = do
+    #{poke TSParseState, payload} ptr payload
+    #{poke TSParseState, current_byte_offset} ptr current_byte_offset
+    #{poke TSParseState, has_error} ptr has_error
+
+{-|
+  The type of the @progress_callback@ member of the `TSParseOptions` struct.
+-}
+type TSParseOptionsProgressCallback a = Ptr (TSParseState a) -> IO CBool
+
 #{def
-  TSInput *_wrap_ts_input_new(
-    TSRead read,
-    TSInputEncoding encoding
-  ) {
-    TSInput *input = malloc(sizeof *input);
-    input->payload = malloc(sizeof read);
-    memcpy(input->payload, &read, sizeof read);
-    input->read = _wrap_ts_input_read;
-    input->encoding = encoding;
-    return input;
-  }
+  typedef bool (*TSParseOptionsProgressCallback)(
+    TSParseState *state
+  );
 }
 
--- | Delete a @`TSInput`@.
-foreign import capi unsafe "TreeSitter/CApi_hsc.h _wrap_ts_input_delete"
-  _wrap_ts_input_delete ::
-    Ptr TSInput ->
-    IO ()
+{-|
+  > typedef struct TSParseOptions {
+  >   void *payload;
+  >   bool (*progress_callback)(TSParseState *state);
+  > } TSParseOptions;
+  -}
+data
+  {-# CTYPE "tree_sitter/api.h" "TSParseOptions" #-}
+  TSParseOptions = forall a. TSParseOptions
+  { payload :: !(Ptr a)
+  , progress_callback :: !(FunPtr (TSParseOptionsProgressCallback a))
+  }
+
+instance Storable TSParseOptions where
+  alignment _ = #{alignment TSParseOptions}
+  sizeOf _ = #{size TSParseOptions}
+  peek ptr = do
+    payload <- #{peek TSParseOptions, payload} ptr
+    progress_callback <- #{peek TSParseOptions, progress_callback} ptr
+    return TSParseOptions{..}
+  poke ptr TSParseOptions{..} = do
+    #{poke TSParseOptions, payload} ptr payload
+    #{poke TSParseOptions, progress_callback} ptr progress_callback
 
 #{def
-  void _wrap_ts_input_delete(
-    TSInput *input
+  typedef bool (*TSParseOptionsProgressCallbackFunction)(
+    uint32_t current_byte_offset,
+    bool has_error
+  );
+}
+
+type TSParseOptionsProgressCallbackFunction =
+  ( #{type uint32_t} ) ->
+  CBool ->
+  IO CBool
+
+-- | Convert a Haskell 'TSParseOptionsProgressCallbackFunction' closure to a C 'TSParseOptionsProgressCallbackFunction' function pointer.
+foreign import ccall "wrapper"
+  mkTSParseOptionsProgressCallbackFunctionFunPtr ::
+    TSParseOptionsProgressCallbackFunction ->
+    IO (FunPtr TSParseOptionsProgressCallbackFunction)
+
+withTSParseOptionsProgressCallbackFunctionFunPtr ::
+  TSParseOptionsProgressCallbackFunction ->
+  (FunPtr TSParseOptionsProgressCallbackFunction -> IO r) ->
+  IO r
+withTSParseOptionsProgressCallbackFunctionFunPtr progressCallbackFunction =
+  bracket (mkTSParseOptionsProgressCallbackFunctionFunPtr progressCallbackFunction) freeHaskellFunPtr
+
+withTSParseOptions :: TSParseOptionsProgressCallbackFunction -> (TSParseOptions -> IO r) -> IO r
+withTSParseOptions progressCallbackFunction action =
+  withTSParseOptionsProgressCallbackFunctionFunPtr progressCallbackFunction $ \progressCallbackFunPtr ->
+    action TSParseOptions
+      { payload = castFunPtrToPtr progressCallbackFunPtr
+      , progress_callback = _wrap_ts_parse_options_progress_callback_p
+      }
+
+foreign import capi unsafe "TreeSitter/CApi_hsc.h &_wrap_ts_parse_options_progress_callback"
+  _wrap_ts_parse_options_progress_callback_p ::
+    FunPtr (
+      Ptr (TSParseState TSParseOptionsProgressCallbackFunction) ->
+      IO CBool
+    )
+
+#{def
+  bool _wrap_ts_parse_options_progress_callback(
+    TSParseState *state
   ) {
-    free(input->payload);
-    free(input);
+    TSParseOptionsProgressCallbackFunction progress_callback;
+    memcpy(&progress_callback, &state->payload, sizeof progress_callback);
+    return progress_callback(state->current_byte_offset, state->has_error);
   }
 }
 
@@ -992,6 +1183,150 @@ pattern TSQueryErrorLanguage = TSQueryError ( #{const TSQueryErrorLanguage} )
 
 {-# COMPLETE TSQueryErrorNone, TSQueryErrorSyntax, TSQueryErrorNodeType, TSQueryErrorField, TSQueryErrorCapture, TSQueryErrorStructure, TSQueryErrorLanguage #-}
 
+{-|
+  > typedef struct TSQueryCursorState {
+  >   void *payload;
+  >   uint32_t current_byte_offset;
+  > } TSQueryCursorState;
+  -}
+data
+  {-# CTYPE "tree_sitter/api.h" "struct TSQueryCursorState" #-}
+  TSQueryCursorState a = TSQueryCursorState
+    { payload :: !(Ptr a)
+    , current_byte_offset :: !( #{type uint32_t} )
+    }
+
+instance Storable (TSQueryCursorState a) where
+  alignment _ = #{alignment TSQueryCursorState}
+  sizeOf _ = #{size TSQueryCursorState}
+  peek ptr = do
+    payload <- #{peek TSQueryCursorState, payload} ptr
+    current_byte_offset <- #{peek TSQueryCursorState, current_byte_offset} ptr
+    return TSQueryCursorState{..}
+  poke ptr TSQueryCursorState{..} = do
+    #{poke TSQueryCursorState, payload} ptr payload
+    #{poke TSQueryCursorState, current_byte_offset} ptr current_byte_offset
+
+{-|
+  The type of the @progress_callback@ member of the `TSQueryCursorOptions` struct.
+-}
+type TSQueryCursorOptionsProgressCallback a = Ptr (TSQueryCursorState a) -> IO CBool
+
+#{def
+  typedef bool (*TSQueryCursorOptionsProgressCallback)(
+    TSParseState *state
+  );
+}
+
+{-|
+  > typedef struct TSQueryCursorOptions {
+  >   void *payload;
+  >   bool (*progress_callback)(TSQueryCursorState *state);
+  > } TSQueryCursorOptions;
+  -}
+data
+  {-# CTYPE "tree_sitter/api.h" "struct TSQueryCursorOptions" #-}
+  TSQueryCursorOptions = forall a. TSQueryCursorOptions
+  { payload :: !(Ptr a)
+  , progress_callback :: !(FunPtr (TSQueryCursorOptionsProgressCallback a))
+  }
+
+instance Storable TSQueryCursorOptions where
+  alignment _ = #{alignment TSQueryCursorOptions}
+  sizeOf _ = #{size TSQueryCursorOptions}
+  peek ptr = do
+    payload <- #{peek TSQueryCursorOptions, payload} ptr
+    progress_callback <- #{peek TSQueryCursorOptions, progress_callback} ptr
+    return TSQueryCursorOptions{..}
+  poke ptr TSQueryCursorOptions{..} = do
+    #{poke TSQueryCursorOptions, payload} ptr payload
+    #{poke TSQueryCursorOptions, progress_callback} ptr progress_callback
+
+
+#{def
+  typedef bool (*TSQueryCursorOptionsProgressCallbackFunction)(
+    uint32_t current_byte_offset
+  );
+}
+
+type TSQueryCursorOptionsProgressCallbackFunction =
+  ( #{type uint32_t} ) ->
+  IO CBool
+
+-- | Convert a Haskell 'TSQueryCursorOptionsProgressCallbackFunction' closure to a C 'TSQueryCursorOptionsProgressCallbackFunction' function pointer.
+foreign import ccall "wrapper"
+  mkTSQueryCursorOptionsProgressCallbackFunctionFunPtr ::
+    TSQueryCursorOptionsProgressCallbackFunction ->
+    IO (FunPtr TSQueryCursorOptionsProgressCallbackFunction)
+
+withTSQueryCursorOptionsProgressCallbackFunctionFunPtr ::
+  TSQueryCursorOptionsProgressCallbackFunction ->
+  (FunPtr TSQueryCursorOptionsProgressCallbackFunction -> IO r) ->
+  IO r
+withTSQueryCursorOptionsProgressCallbackFunctionFunPtr progressCallbackFunction =
+  bracket (mkTSQueryCursorOptionsProgressCallbackFunctionFunPtr progressCallbackFunction) freeHaskellFunPtr
+
+withTSQueryCursorOptions :: TSQueryCursorOptionsProgressCallbackFunction -> (TSQueryCursorOptions -> IO r) -> IO r
+withTSQueryCursorOptions progressCallbackFunction action =
+  withTSQueryCursorOptionsProgressCallbackFunctionFunPtr progressCallbackFunction $ \progressCallbackFunPtr ->
+    action TSQueryCursorOptions
+      { payload = castFunPtrToPtr progressCallbackFunPtr
+      , progress_callback = _wrap_ts_query_cursor_options_progress_callback_p
+      }
+
+foreign import capi unsafe "TreeSitter/CApi_hsc.h &_wrap_ts_query_cursor_options_progress_callback"
+  _wrap_ts_query_cursor_options_progress_callback_p ::
+    FunPtr (
+      Ptr (TSQueryCursorState TSQueryCursorOptionsProgressCallbackFunction) ->
+      IO CBool
+    )
+
+#{def
+  bool _wrap_ts_query_cursor_options_progress_callback(
+    TSQueryCursorState *state
+  ) {
+    TSQueryCursorOptionsProgressCallbackFunction progress_callback;
+    memcpy(&progress_callback, &state->payload, sizeof progress_callback);
+    return progress_callback(state->current_byte_offset);
+  }
+}
+
+{-|
+  The metadata associated with a language.
+
+  Currently, this metadata can be used to check the [Semantic Version](https://semver.org/)
+  of the language. This version information should be used to signal if a given parser might
+  be incompatible with existing queries when upgrading between major versions, or minor versions
+  if it's in zerover.
+
+  > typedef struct TSLanguageMetadata {
+  >   uint8_t major_version;
+  >   uint8_t minor_version;
+  >   uint8_t patch_version;
+  > } TSLanguageMetadata;
+  -}
+data
+  {-# CTYPE "tree_sitter/api.h" "struct TSLanguageMetadata" #-}
+  TSLanguageMetadata = TSLanguageMetadata
+  { major_version :: !Word8
+  , minor_version :: !Word8
+  , patch_version :: !Word8
+  }
+  deriving (Ord, Eq, Show)
+
+instance Storable TSLanguageMetadata where
+  alignment _ = #{alignment TSLanguageMetadata}
+  sizeOf _ = #{size TSLanguageMetadata}
+  peek ptr = do
+    major_version <- #{peek TSLanguageMetadata, major_version} ptr
+    minor_version <- #{peek TSLanguageMetadata, minor_version} ptr
+    patch_version <- #{peek TSLanguageMetadata, patch_version} ptr
+    return TSLanguageMetadata{..}
+  poke ptr TSLanguageMetadata{..} = do
+    #{poke TSLanguageMetadata, major_version} ptr major_version
+    #{poke TSLanguageMetadata, minor_version} ptr minor_version
+    #{poke TSLanguageMetadata, patch_version} ptr patch_version
+
 {--------------------}
 {- Section - Parser -}
 {--------------------}
@@ -1040,7 +1375,7 @@ foreign import capi unsafe "tree_sitter/api.h ts_parser_language"
   Returns a boolean indicating whether or not the language was successfully
   assigned. True means assignment succeeded. False means there was a version
   mismatch: the language was generated with an incompatible version of the
-  Tree-sitter CLI. Check the language's version using @`ts_language_version`@
+  Tree-sitter CLI. Check the language's version using @`ts_language_abi_version`@
   and compare it to this library's @`TREE_SITTER_LANGUAGE_VERSION`@ and
   @`TREE_SITTER_MIN_COMPATIBLE_LANGUAGE_VERSION`@ constants.
 
@@ -1154,13 +1489,11 @@ foreign import capi unsafe "tree_sitter/api.h ts_parser_included_ranges"
 ts_parser_parse ::
   Ptr TSParser ->
   ConstPtr TSTree ->
-  TSRead ->
-  TSInputEncoding ->
+  TSInput ->
   IO (Ptr TSTree)
-ts_parser_parse = \self old_tree readFun encoding ->
-  bracket (mkTSReadFunPtr readFun) freeHaskellFunPtr $ \readFun_p ->
-    bracket (_wrap_ts_input_new readFun_p encoding) _wrap_ts_input_delete $ \input_p ->
-      _wrap_ts_parser_parse self old_tree input_p
+ts_parser_parse = \self old_tree input ->
+  with input $ \input_p ->
+    _wrap_ts_parser_parse self old_tree input_p
 
 foreign import capi safe "TreeSitter/CApi_hsc.h _wrap_ts_parser_parse"
   _wrap_ts_parser_parse ::
@@ -1179,6 +1512,51 @@ foreign import capi safe "TreeSitter/CApi_hsc.h _wrap_ts_parser_parse"
     return ts_parser_parse(self, old_tree, *input);
   }
 }
+
+{-|
+  Use the parser to parse some source code and create a syntax tree, with some options.
+
+  See [`ts_parser_parse`] for more details.
+
+  See [`TSParseOptions`] for more details on the options.
+
+  > TSTree* ts_parser_parse_with_options(
+  >   TSParser *self,
+  >   const TSTree *old_tree,
+  >   TSInput input,
+  >   TSParseOptions parse_options
+  > );
+  -}
+ts_parser_parse_with_options ::
+  Ptr TSParser ->
+  ConstPtr TSTree ->
+  TSInput ->
+  TSParseOptions ->
+  IO (Ptr TSTree)
+ts_parser_parse_with_options = \self old_tree input parse_options ->
+  with input $ \input_p ->
+    with parse_options $ \parse_options_p ->
+      _wrap_ts_parser_parse_with_options self old_tree input_p parse_options_p
+
+#{def
+  TSTree *_wrap_ts_parser_parse_with_options(
+    TSParser *self,
+    const TSTree *old_tree,
+    TSInput *input,
+    TSParseOptions *parse_options
+  )
+  {
+    return ts_parser_parse_with_options(self, old_tree, *input, *parse_options);
+  }
+}
+
+foreign import capi safe "TreeSitter/CApi_hsc.h _wrap_ts_parser_parse_with_options"
+  _wrap_ts_parser_parse_with_options ::
+    Ptr TSParser ->
+    ConstPtr TSTree ->
+    Ptr TSInput ->
+    Ptr TSParseOptions ->
+    IO (Ptr TSTree)
 
 {-|
   Use the parser to parse some source code stored in one contiguous buffer.
@@ -1239,56 +1617,6 @@ foreign import capi unsafe "tree_sitter/api.h ts_parser_reset"
   ts_parser_reset ::
     Ptr TSParser ->
     IO ()
-
-{-|
-  Set the maximum duration in microseconds that parsing should be allowed to
-  take before halting.
-
-  If parsing takes longer than this, it will halt early, returning @NULL@.
-  See @`ts_parser_parse`@ for more information.
-
-  > void ts_parser_set_timeout_micros(TSParser *self, uint64_t timeout_micros);
--}
-foreign import capi unsafe "tree_sitter/api.h ts_parser_set_timeout_micros"
-  ts_parser_set_timeout_micros ::
-    Ptr TSParser ->
-    ( #{type uint64_t} ) ->
-    IO ()
-
-{-|
-  Get the duration in microseconds that parsing is allowed to take.
-
-  > uint64_t ts_parser_timeout_micros(const TSParser *self);
--}
-foreign import capi unsafe "tree_sitter/api.h ts_parser_timeout_micros"
-  ts_parser_timeout_micros ::
-    Ptr TSParser ->
-    IO ( #{type uint64_t} )
-
-{-|
-  Set the parser's current cancellation flag pointer.
-
-  If a non-null pointer is assigned, then the parser will periodically read
-  from this pointer during parsing. If it reads a non-zero value, it will
-  halt early, returning @NULL@. See @`ts_parser_parse`@ for more information.
-
-  > void ts_parser_set_cancellation_flag(TSParser *self, const size_t *flag);
--}
-foreign import capi unsafe "tree_sitter/api.h ts_parser_set_cancellation_flag"
-  ts_parser_set_cancellation_flag ::
-    Ptr TSParser ->
-    ConstPtr CSize ->
-    IO ()
-
-{-|
-  Get the parser's current cancellation flag pointer.
-
-  > const size_t *ts_parser_cancellation_flag(const TSParser *self);
--}
-foreign import capi unsafe "tree_sitter/api.h ts_parser_cancellation_flag"
-  ts_parser_cancellation_flag ::
-    ConstPtr TSParser ->
-    IO (ConstPtr CSize)
 
 {-|
   Set the logger that a parser should use during parsing.
@@ -2742,10 +3070,13 @@ foreign import capi unsafe "TreeSitter/CApi_hsc.h _wrap_ts_node_named_descendant
   Edit the node to keep it in-sync with source code that has been edited.
 
   This function is only rarely needed. When you edit a syntax tree with the
-  @`ts_tree_edit`@ function, all of the nodes that you retrieve from the tree
-  afterward will already reflect the edit. You only need to use @`ts_node_edit`@
-  when you have a @t`TSNode`@ instance that you want to keep and continue to use
+  [`ts_tree_edit`] function, all of the nodes that you retrieve from the tree
+  afterward will already reflect the edit. You only need to use [`ts_node_edit`]
+  when you have a [`TSNode`] instance that you want to keep and continue to use
   after an edit.
+
+  The edit's `start_byte` must be less than or equal to its `old_end_byte`,
+  and its `start_point` must be less than or equal to its `old_end_point`.
 
   > void ts_node_edit(TSNode *self, const TSInputEdit *edit);
 -}
@@ -2782,6 +3113,43 @@ foreign import capi unsafe "TreeSitter/CApi_hsc.h _wrap_ts_node_eq"
     Ptr TSNode ->
     Ptr TSNode ->
     IO CBool
+
+{-|
+ Edit a point to keep it in-sync with source code that has been edited.
+
+ This function updates a single point's byte offset and row/column position
+ based on an edit operation. This is useful for editing points without
+ requiring a tree or node instance.
+
+ The edit's `start_byte` must be less than or equal to its `old_end_byte`,
+ and its `start_point` must be less than or equal to its `old_end_point`.
+
+ > void ts_point_edit(TSPoint *point, uint32_t *point_byte, const TSInputEdit *edit);
+ -}
+foreign import capi unsafe "TreeSitter/CApi_hsc.h ts_point_edit"
+  ts_point_edit ::
+    Ptr TSPoint ->
+    Ptr ( #{type uint32_t} ) ->
+    ConstPtr TSInputEdit ->
+    IO ()
+
+{-|
+ Edit a range to keep it in-sync with source code that has been edited.
+
+ This function updates a range's start and end positions based on an edit
+ operation. This is useful for editing ranges without requiring a tree
+ or node instance.
+
+ The edit's `start_byte` must be less than or equal to its `old_end_byte`,
+ and its `start_point` must be less than or equal to its `old_end_point`.
+
+ > void ts_range_edit(TSRange *range, const TSInputEdit *edit);
+ -}
+foreign import capi unsafe "TreeSitter/CApi_hsc.h ts_range_edit"
+  ts_range_edit ::
+    Ptr TSRange ->
+    ConstPtr TSInputEdit ->
+    IO ()
 
 {- Section - TreeCursor -}
 
@@ -3464,6 +3832,46 @@ foreign import capi unsafe "TreeSitter/CApi_hsc.h _wrap_ts_query_cursor_exec"
     IO ()
 
 {-|
+  Start running a given query on a given node, with some options.
+
+  > void ts_query_cursor_exec_with_options(
+  >  TSQueryCursor *self,
+  >  const TSQuery *query,
+  >  TSNode node,
+  >  const TSQueryCursorOptions *query_options
+  >);
+-}
+ts_query_cursor_exec_with_options ::
+  Ptr TSQueryCursor ->
+  ConstPtr TSQuery ->
+  TSNode ->
+  ConstPtr TSQueryCursorOptions ->
+  IO ()
+ts_query_cursor_exec_with_options = \self query node query_options ->
+  with node $ \node_p ->
+    _wrap_ts_query_cursor_exec_with_options self query node_p query_options
+{-# INLINE ts_query_cursor_exec_with_options #-}
+
+#{def
+  void _wrap_ts_query_cursor_exec_with_options(
+    TSQueryCursor *self,
+    const TSQuery *query,
+    TSNode *node,
+    const TSQueryCursorOptions *query_options
+  ) {
+    return ts_query_cursor_exec_with_options(self, query, *node, query_options);
+  }
+}
+
+foreign import capi unsafe "TreeSitter/CApi_hsc.h _wrap_ts_query_cursor_exec_with_options"
+  _wrap_ts_query_cursor_exec_with_options ::
+    Ptr TSQueryCursor ->
+    ConstPtr TSQuery ->
+    Ptr TSNode ->
+    ConstPtr TSQueryCursorOptions ->
+    IO ()
+
+{-|
   Check whether the maximum number of in-progress matches allowed by this query cursor was exceeded.
 
   Query cursors have an optional maximum capacity for storing lists of
@@ -3502,33 +3910,6 @@ foreign import capi unsafe "tree_sitter/api.h ts_query_cursor_set_match_limit"
     IO ()
 
 {-|
-  Set the maximum duration in microseconds that query execution should be allowed to
-  take before halting.
-
-  If query execution takes longer than this, it will halt early, returning @NULL@.
-  See @`ts_query_cursor_next_match`@ or @`ts_query_cursor_next_capture`@ for more information.
-
-  > void ts_query_cursor_set_timeout_micros(TSQueryCursor *self, uint64_t timeout_micros);
--}
-foreign import capi unsafe "tree_sitter/api.h ts_query_cursor_set_timeout_micros"
-  ts_query_cursor_set_timeout_micros ::
-    Ptr TSQueryCursor ->
-    ( #{type uint64_t} ) ->
-    IO ()
-
-{-|
-  Get the duration in microseconds that query execution is allowed to take.
-
-  This is set via @`ts_query_cursor_set_timeout_micros`@.
-
-  > uint64_t ts_query_cursor_timeout_micros(const TSQueryCursor *self);
--}
-foreign import capi unsafe "tree_sitter/api.h ts_query_cursor_timeout_micros"
-  ts_query_cursor_timeout_micros ::
-    ConstPtr TSQueryCursor ->
-    IO ( #{type uint64_t} )
-
-{-|
   Set the range of bytes in which the query will be executed.
 
   > void ts_query_cursor_set_byte_range(TSQueryCursor *self, uint32_t start_byte, uint32_t end_byte);
@@ -3538,7 +3919,7 @@ foreign import capi unsafe "tree_sitter/api.h ts_query_cursor_set_byte_range"
     Ptr TSQueryCursor ->
     ( #{type uint32_t} ) ->
     ( #{type uint32_t} ) ->
-    IO ()
+    IO CBool
 
 {-|
   Set the range of positions in which the query will be executed.
@@ -3549,7 +3930,7 @@ ts_query_cursor_set_point_range ::
     Ptr TSQueryCursor ->
     TSPoint ->
     TSPoint ->
-    IO ()
+    IO CBool
 ts_query_cursor_set_point_range = \self start_point end_point ->
   with start_point $ \start_point_p ->
     with end_point $ \end_point_p ->
@@ -3557,14 +3938,84 @@ ts_query_cursor_set_point_range = \self start_point end_point ->
 {-# INLINE ts_query_cursor_set_point_range #-}
 
 #{def
-  void _wrap_ts_query_cursor_set_point_range(TSQueryCursor *self, TSPoint *start_point, TSPoint *end_point)
+  bool _wrap_ts_query_cursor_set_point_range(TSQueryCursor *self, TSPoint *start_point, TSPoint *end_point)
   {
-    ts_query_cursor_set_point_range(self, *start_point, *end_point);
+    return ts_query_cursor_set_point_range(self, *start_point, *end_point);
   }
 }
 
 foreign import capi unsafe "TreeSitter/CApi_hsc.h _wrap_ts_query_cursor_set_point_range"
   _wrap_ts_query_cursor_set_point_range ::
+    Ptr TSQueryCursor ->
+    Ptr TSPoint ->
+    Ptr TSPoint ->
+    IO CBool
+
+{-|
+  Set the byte range within which all matches must be fully contained.
+
+  Set the range of bytes in which matches will be searched for. In contrast to
+  `ts_query_cursor_set_byte_range`, this will restrict the query cursor to only return
+  matches where _all_ nodes are _fully_ contained within the given range. Both functions
+  can be used together, e.g. to search for any matches that intersect line 5000, as
+  long as they are fully contained within lines 4500-5500
+
+  NOTE: An `end_byte` of zero is interpreted as `UINT32_MAX`, making the range unbounded.
+
+  > bool ts_query_cursor_set_containing_byte_range(
+  >   TSQueryCursor *self,
+  >   uint32_t start_byte,
+  >   uint32_t end_byte
+  > );
+  -}
+foreign import capi unsafe "tree_sitter/api.h ts_query_cursor_set_containing_byte_range"
+  ts_query_cursor_set_containing_byte_range ::
+    Ptr TSQueryCursor ->
+    ( #{type uint32_t} ) ->
+    ( #{type uint32_t} ) ->
+    IO CBool
+
+{-
+  Set the point range within which all matches must be fully contained.
+
+  Set the range of bytes in which matches will be searched for. In contrast to
+  `ts_query_cursor_set_point_range`, this will restrict the query cursor to only return
+  matches where _all_ nodes are _fully_ contained within the given range. Both functions
+  can be used together, e.g. to search for any matches that intersect line 5000, as
+  long as they are fully contained within lines 4500-5500
+
+  NOTE: An `end_point` of `(0, 0)` is interpreted as `POINT_MAX`, making the
+  range unbounded.
+
+  > bool ts_query_cursor_set_containing_point_range(
+  >   TSQueryCursor *self,
+  >   TSPoint start_point,
+  >   TSPoint end_point
+  > );
+  -}
+ts_query_cursor_set_containing_point_range ::
+    Ptr TSQueryCursor ->
+    TSPoint ->
+    TSPoint ->
+    IO ()
+ts_query_cursor_set_containing_point_range = \self start_point end_point ->
+  with start_point $ \start_point_p ->
+    with end_point $ \end_point_p ->
+      _wrap_ts_query_cursor_set_containing_point_range self start_point_p end_point_p
+{-# INLINE ts_query_cursor_set_containing_point_range #-}
+
+#{def
+  void _wrap_ts_query_cursor_set_containing_point_range(
+    TSQueryCursor *self,
+    TSPoint *start_point,
+    TSPoint *end_point
+  ) {
+    ts_query_cursor_set_containing_point_range(self, *start_point, *end_point);
+  }
+}
+
+foreign import capi unsafe "TreeSitter/CApi_hsc.h _wrap_ts_query_cursor_set_containing_point_range"
+  _wrap_ts_query_cursor_set_containing_point_range ::
     Ptr TSQueryCursor ->
     Ptr TSPoint ->
     Ptr TSPoint ->
@@ -3751,6 +4202,38 @@ foreign import capi unsafe "tree_sitter/api.h ts_language_field_id_for_name"
     IO TSFieldId
 
 {-|
+  Get a list of all supertype symbols for the language.
+
+  > const TSSymbol *ts_language_supertypes(
+  >   const TSLanguage *self,
+  >   uint32_t *length
+  > );
+  -}
+foreign import capi unsafe "tree_sitter/api.h ts_language_supertypes"
+  ts_language_supertypes ::
+    ConstPtr TSLanguage ->
+    Ptr ( #{type uint32_t} ) ->
+    IO (ConstPtr TSSymbol)
+
+{-|
+  Get a list of all subtype symbol ids for a given supertype symbol.
+
+  See [`ts_language_supertypes`] for fetching all supertype symbols.
+
+  > const TSSymbol *ts_language_subtypes(
+  >   const TSLanguage *self,
+  >   TSSymbol supertype,
+  >   uint32_t *length
+  > );
+  -}
+foreign import capi unsafe "tree_sitter/api.h ts_language_subtypes"
+  ts_language_subtypes ::
+    ConstPtr TSLanguage ->
+    TSSymbol ->
+    Ptr ( #{type uint32_t} ) ->
+    IO (ConstPtr TSSymbol)
+
+{-|
   Check whether the given node type id belongs to named nodes, anonymous nodes,
   or a hidden nodes.
 
@@ -3771,12 +4254,26 @@ foreign import capi unsafe "tree_sitter/api.h ts_language_symbol_type"
 
   See also @`ts_parser_set_language`@.
 
-  > uint32_t ts_language_version(const TSLanguage *self);
+  > uint32_t ts_language_abi_version(const TSLanguage *self);
 -}
-foreign import capi unsafe "tree_sitter/api.h ts_language_version"
-  ts_language_version ::
+foreign import capi unsafe "tree_sitter/api.h ts_language_abi_version"
+  ts_language_abi_version ::
     ConstPtr TSLanguage ->
     IO ( #{type uint32_t} )
+
+{-|
+ Get the metadata for this language. This information is generated by the
+ CLI, and relies on the language author providing the correct metadata in
+ the language's `tree-sitter.json` file.
+
+ See also [`TSLanguageMetadata`].
+
+ > const TSLanguageMetadata *ts_language_metadata(const TSLanguage *self);
+ -}
+foreign import capi unsafe "tree_sitter/api.h ts_language_metadata"
+  ts_language_metadata ::
+    ConstPtr TSLanguage ->
+    IO (ConstPtr TSLanguageMetadata)
 
 {-|
   Get the next parse state. Combine this with lookahead iterators to generate
@@ -3791,6 +4288,16 @@ foreign import capi unsafe "tree_sitter/api.h ts_language_next_state"
     TSStateId ->
     TSSymbol ->
     IO TSStateId
+
+{-|
+  Get the name of this language. This returns `NULL` in older parsers.
+
+  > const char *ts_language_name(const TSLanguage *self);
+  -}
+foreign import capi unsafe "tree_sitter/api.h ts_language_name"
+  ts_language_name ::
+    ConstPtr TSLanguage ->
+    IO (ConstPtr CChar)
 
 {--------------------------------}
 {- Section - Lookahead Iterator -}

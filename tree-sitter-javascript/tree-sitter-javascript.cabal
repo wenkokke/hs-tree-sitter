@@ -11,8 +11,8 @@ maintainer:         wenkokke@users.noreply.github.com
 category:           Language
 build-type:         Simple
 extra-source-files:
-  vendor/tree-sitter-javascript/bindings/c/tree-sitter-javascript.h
-  vendor/tree-sitter-javascript/grammar.js
+  vendor/tree-sitter-javascript/bindings/c/tree-sitter-javascript.pc.in
+  vendor/tree-sitter-javascript/bindings/c/tree_sitter/tree-sitter-javascript.h
   vendor/tree-sitter-javascript/package.json
   vendor/tree-sitter-javascript/src/parser.c
   vendor/tree-sitter-javascript/src/scanner.c
@@ -22,6 +22,7 @@ extra-source-files:
   vendor/tree-sitter-javascript/tree-sitter.json
 
 data-files:
+  vendor/tree-sitter-javascript/src/grammar.json
   vendor/tree-sitter-javascript/src/node-types.json
   vendor/tree-sitter-javascript/test/corpus/*.txt
 
@@ -32,8 +33,9 @@ tested-with:
    || ==9.4.8
    || ==9.6.7
    || ==9.8.4
-   || ==9.10.2
-   || ==9.12.2
+   || ==9.10.3
+   || ==9.12.4
+   || ==9.14.1
 
 common language
   ghc-options:
@@ -61,7 +63,7 @@ library
   build-tool-depends: hsc2hs:hsc2hs
   hs-source-dirs:     bindings/haskell
   include-dirs:       vendor/tree-sitter-javascript/bindings/c
-  includes:           tree-sitter-javascript.h
+  includes:           tree_sitter/tree-sitter-javascript.h
   c-sources:
     vendor/tree-sitter-javascript/src/parser.c
     vendor/tree-sitter-javascript/src/scanner.c

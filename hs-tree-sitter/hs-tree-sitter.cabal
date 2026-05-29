@@ -1,6 +1,6 @@
 cabal-version:   3.4
 name:            hs-tree-sitter
-version:         13.0.14.0
+version:         13.1.15.0
 license:         AGPL-3.0-only
 synopsis:        High-level bindings for tree-sitter
 description:     High-level bindings for tree-sitter.
@@ -8,7 +8,10 @@ author:          Wen Kokke
 maintainer:      wenkokke@users.noreply.github.com
 category:        Language
 build-type:      Simple
-extra-doc-files: README.md
+extra-doc-files:
+  CHANGELOG.md
+  README.md
+
 tested-with:
   GHC ==8.10.7
    || ==9.0.2
@@ -16,8 +19,9 @@ tested-with:
    || ==9.4.8
    || ==9.6.7
    || ==9.8.4
-   || ==9.10.2
-   || ==9.12.2
+   || ==9.10.3
+   || ==9.12.4
+   || ==9.14.1
 
 source-repository head
   type:     git
@@ -39,18 +43,10 @@ common language
       -optc=-Wno-incompatible-pointer-types-discards-qualifiers
 
 library
-  import:             language
-  exposed-modules:    TreeSitter
-  hs-source-dirs:     src
-  build-depends:      hs-tree-sitter:internal
-  default-extensions: NoImplicitPrelude
-
-library internal
   import:          language
-  visibility:      private
-  hs-source-dirs:  src-internal
-  ghc-options:     -Wno-name-shadowing
-  exposed-modules:
+  hs-source-dirs:  src
+  exposed-modules: TreeSitter
+  other-modules:
     TreeSitter.Internal
     TreeSitter.Internal.ST
 
@@ -58,4 +54,4 @@ library internal
     , base                  >=4.13 && <5
     , base-compat-constptr  >=0.1  && <0.2
     , bytestring            >=0.11 && <0.13
-    , hs-tree-sitter-capi   >=13.0 && <13.1
+    , hs-tree-sitter-capi   >=13.1 && <13.2

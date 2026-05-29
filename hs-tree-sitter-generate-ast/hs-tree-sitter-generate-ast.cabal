@@ -14,8 +14,9 @@ tested-with:
    || ==9.4.8
    || ==9.6.7
    || ==9.8.4
-   || ==9.10.2
-   || ==9.12.2
+   || ==9.10.3
+   || ==9.12.4
+   || ==9.14.1
 
 common language
   ghc-options:
@@ -43,7 +44,7 @@ executable tree-sitter-generate-ast
   build-depends:
     , aeson                 >=2.2  && <2.3
     , base                  >=4.16 && <5
-    , containers            >=0.6  && <0.8
+    , containers            >=0.6  && <0.9
     , doclayout             >=0.5  && <0.6
     , doctemplates          >=0.11 && <0.12
     , fgl                   >=5.8  && <5.9

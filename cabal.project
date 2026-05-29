@@ -1,14 +1,11 @@
-index-state:
-  , hackage.haskell.org 2025-07-24T11:10:31Z
+import: cabal.project.config
 
-packages:
-  base-compat-constptr
-  hs-tree-sitter
-  hs-tree-sitter-capi
-  tree-sitter-javascript
-  tree-sitter-while
+packages: base-compat-constptr
+packages: hs-tree-sitter
+packages: hs-tree-sitter-capi
+packages: tree-sitter-javascript
+packages: tree-sitter-while
 
-if impl(ghc >=9.6.5)
-  packages:
-    hs-tree-sitter-generate-ast
-    hs-tree-sitter-test
+if impl(ghc >=9.2)
+  packages: hs-tree-sitter-generate-ast
+  packages: hs-tree-sitter-test
