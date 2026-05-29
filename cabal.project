@@ -8,7 +8,7 @@ packages:
   tree-sitter-javascript
   tree-sitter-while
 
-if impl(ghc >=9.6.5)
+if impl(ghc >=9.2)
   packages:
     hs-tree-sitter-generate-ast
     hs-tree-sitter-test
