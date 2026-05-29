@@ -44,6 +44,7 @@ jobs:
         node-version: [""] # use version from dev-dependencies
         include:
           # Test older versions exclusively on Linux
+          - { os: "ubuntu-latest", ghc-version: "9.14" }
           - { os: "ubuntu-latest", ghc-version: "9.6" }
           - { os: "ubuntu-latest", ghc-version: "9.4" }
           - { os: "ubuntu-latest", ghc-version: "9.2" }
